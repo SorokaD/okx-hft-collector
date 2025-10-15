@@ -1,0 +1,81 @@
+
+version: "3.8"
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: ch
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - ch-data:/var/lib/clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    user: "0:0"
+
+  collector:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "9108:9108"
+    environment:
+      INSTRUMENTS: '["BTC-USDT","ETH-USDT"]'
+      CHANNELS: '["books-l2-tbt","trades"]'
+      OKX_WS_URL: "wss://ws.okx.com:8443/ws/v5/public"
+      CLICKHOUSE_DSN: "http://clickhouse:8123"
+      CLICKHOUSE_USER: "default"
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DB: "market_raw"
+      LOCAL_WAL_DIR: "./wal"
+      PARQUET_DIR: "./parquet"
+      BATCH_MAX_SIZE: "5000"
+      FLUSH_INTERVAL_MS: "150"
+      BACKOFF_BASE: "0.5"
+      BACKOFF_CAP: "30.0"
+      METRICS_PORT: "9108"
+      LOG_LEVEL: "INFO"
+    depends_on:
+      - clickhouse
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alert_rules.yml:/etc/prometheus/alert_rules.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+
+  alert-webhook:
+    build:
+      context: .
+      dockerfile: Dockerfile.webhook
+    ports:
+      - "5001:5001"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+
+volumes:
+  ch-data:

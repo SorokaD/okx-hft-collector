@@ -1,0 +1,9 @@
+
+from typing import Protocol, Dict, Any
+
+class IOrderBookHandler(Protocol):
+    async def on_snapshot(self, msg: Dict[str, Any]) -> None: ...
+    async def on_increment(self, msg: Dict[str, Any]) -> None: ...
+
+class ITradeHandler(Protocol):
+    async def on_trade(self, msg: Dict[str, Any]) -> None: ...

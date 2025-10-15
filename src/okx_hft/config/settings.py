@@ -1,0 +1,27 @@
+
+from pydantic_settings import BaseSettings
+from pydantic import Field
+from typing import List
+
+class Settings(BaseSettings):
+    INSTRUMENTS: List[str] = Field(default_factory=lambda: ["BTC-USDT","ETH-USDT"])
+    CHANNELS: List[str] = Field(default_factory=lambda: ["books-l2-tbt","trades"])
+    OKX_WS_URL: str = "wss://ws.okx.com:8443/ws/v5/public"
+
+    CLICKHOUSE_DSN: str = "http://localhost:8123"
+    CLICKHOUSE_USER: str = "default"
+    CLICKHOUSE_PASSWORD: str = ""
+    CLICKHOUSE_DB: str = "market_raw"
+    LOCAL_WAL_DIR: str = "./wal"
+    PARQUET_DIR: str = "./parquet"
+
+    BATCH_MAX_SIZE: int = 5000
+    FLUSH_INTERVAL_MS: int = 150
+
+    BACKOFF_BASE: float = 0.5
+    BACKOFF_CAP: float = 30.0
+
+    METRICS_PORT: int = 9108
+    LOG_LEVEL: str = "INFO"
+
+    model_config = {"env_file": ".env", "case_sensitive": False}

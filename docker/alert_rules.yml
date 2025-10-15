@@ -1,0 +1,62 @@
+groups:
+  - name: okx-collector-alerts
+    rules:
+      # Алерт на разрыв WebSocket соединения
+      - alert: WebSocketConnectionDown
+        expr: increase(reconnects_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OKX WebSocket reconnected"
+          description: "WebSocket connection to OKX was reestablished. Reconnects in last 5 minutes: {{ $value }}"
+
+      # Алерт на отсутствие данных
+      - alert: NoDataReceived
+        expr: rate(events_total[5m]) == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No data received from OKX"
+          description: "No events received from OKX WebSocket in the last 5 minutes"
+
+      # Алерт на высокую задержку event loop
+      - alert: HighEventLoopLag
+        expr: event_loop_lag_ms > 100
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High event loop lag"
+          description: "Event loop lag is {{ $value }}ms, which is above 100ms threshold"
+
+      # Алерт на ошибки вставки данных
+      - alert: DataInsertionErrors
+        expr: increase(events_total{channel="unknown"}[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of unknown events"
+          description: "{{ $value }} unknown events received in the last 5 minutes"
+
+      # Алерт на недоступность коллектора
+      - alert: CollectorDown
+        expr: up{job="okx-collector"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OKX Collector is down"
+          description: "OKX Collector service is not responding"
+
+      # Алерт на недоступность ClickHouse
+      - alert: ClickHouseDown
+        expr: up{job="clickhouse"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ClickHouse is down"
+          description: "ClickHouse service is not responding"
