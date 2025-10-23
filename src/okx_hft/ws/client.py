@@ -18,12 +18,20 @@ class OKXWebSocketClient:
     def __init__(self, settings: Settings) -> None:
         self.s = settings
         self._attempt = 0
-        self.storage = ClickHouseStorage(
-            dsn=self.s.CLICKHOUSE_DSN,
-            user=self.s.CLICKHOUSE_USER,
-            password=self.s.CLICKHOUSE_PASSWORD,
-            db=self.s.CLICKHOUSE_DB,
-        )
+        
+        # Пытаемся создать ClickHouse storage, если не получается - работаем без него
+        try:
+            self.storage = ClickHouseStorage(
+                dsn=self.s.CLICKHOUSE_DSN,
+                user=self.s.CLICKHOUSE_USER,
+                password=self.s.CLICKHOUSE_PASSWORD,
+                db=self.s.CLICKHOUSE_DB,
+            )
+            log.info("ClickHouse storage initialized successfully")
+        except Exception as e:
+            log.warning(f"Failed to initialize ClickHouse storage: {e}. Working without storage.")
+            self.storage = None
+        
         # Инициализируем обработчики
         self.trades_handler = TradesHandler(self.storage)
         self.orderbook_handler = OrderBookHandler(self.storage)

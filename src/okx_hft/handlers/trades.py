@@ -8,7 +8,7 @@ log = get_logger(__name__)
 
 
 class TradesHandler(ITradeHandler):
-    def __init__(self, storage: IStorage) -> None:
+    def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
         self.batch_max_size = 10  # Батч размер для trades
@@ -51,23 +51,27 @@ class TradesHandler(ITradeHandler):
     async def _flush_batch(self) -> None:
         """Отправка батча в хранилище"""
         if self.batch:
-            try:
-                await self.storage.write_trades(self.batch)
-                log.info(
-                    f"Successfully flushed {len(self.batch)} trades to storage")
-                self.batch = []
-            except Exception as e:
-                # Проверяем, не является ли это "успешным" результатом ClickHouse
-                if "ClickHouse error writing trades: 0" in str(e):
+            if self.storage:
+                try:
+                    await self.storage.write_trades(self.batch)
                     log.info(
-                        f"Successfully flushed {len(self.batch)} trades to storage (ClickHouse returned 0)")
+                        f"Successfully flushed {len(self.batch)} trades to storage")
                     self.batch = []
-                else:
-                    log.error(
-                        f"Error flushing trades batch: {str(e)}, batch_size={len(self.batch)}")
-                    log.error(
-                        f"Batch sample: {self.batch[:2] if self.batch else 'empty'}")
-                    # Не очищаем батч при ошибке, чтобы не потерять данные
+                except Exception as e:
+                    # Проверяем, не является ли это "успешным" результатом ClickHouse
+                    if "ClickHouse error writing trades: 0" in str(e):
+                        log.info(
+                            f"Successfully flushed {len(self.batch)} trades to storage (ClickHouse returned 0)")
+                        self.batch = []
+                    else:
+                        log.error(
+                            f"Error flushing trades batch: {str(e)}, batch_size={len(self.batch)}")
+                        log.error(
+                            f"Batch sample: {self.batch[:2] if self.batch else 'empty'}")
+                        # Не очищаем батч при ошибке, чтобы не потерять данные
+            else:
+                log.info(f"No storage available, skipping flush of {len(self.batch)} trades")
+                self.batch = []
 
     async def flush(self) -> None:
         """Принудительная отправка оставшихся данных"""

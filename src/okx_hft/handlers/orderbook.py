@@ -7,7 +7,7 @@ from okx_hft.utils.logging import get_logger
 log = get_logger(__name__)
 
 class OrderBookHandler(IOrderBookHandler):
-    def __init__(self, storage: IStorage) -> None:
+    def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
         self.batch_max_size = 100  # Батч размер для order book
@@ -159,12 +159,16 @@ class OrderBookHandler(IOrderBookHandler):
     async def _flush_batch(self) -> None:
         """Отправка батча в хранилище"""
         if self.batch:
-            try:
-                await self.storage.write_lob_updates(self.batch)
-                log.info(f"Flushed {len(self.batch)} order book updates to storage")
+            if self.storage:
+                try:
+                    await self.storage.write_lob_updates(self.batch)
+                    log.info(f"Flushed {len(self.batch)} order book updates to storage")
+                    self.batch = []
+                except Exception as e:
+                    log.error(f"Error flushing order book batch: {str(e)}")
+            else:
+                log.info(f"No storage available, skipping flush of {len(self.batch)} order book updates")
                 self.batch = []
-            except Exception as e:
-                log.error(f"Error flushing order book batch: {str(e)}")
 
     async def flush(self) -> None:
         """Принудительная отправка оставшихся данных"""

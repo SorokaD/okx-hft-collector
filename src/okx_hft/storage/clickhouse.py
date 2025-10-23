@@ -5,19 +5,30 @@ import clickhouse_connect
 
 class ClickHouseStorage(IStorage):
     def __init__(self, dsn: str, user: str, password: str, db: str) -> None:
+        # Parse DSN to extract host and port
+        from urllib.parse import urlparse
+        parsed = urlparse(dsn)
+        host = parsed.hostname or "localhost"
+        port = parsed.port or 8123
+        
+        # Store DSN and credentials for HTTP requests
+        self.dsn = dsn
+        self.user = user
+        self.password = password
+        
         print(
-            f"Connecting to ClickHouse: host=clickhouse, port=8123, user={user}, db={db}"
+            f"Connecting to ClickHouse: host={host}, port={port}, user={user}, db={db}"
         )
         # First connect without database to create it
         temp_client = clickhouse_connect.get_client(
-            host="clickhouse", port=8123, username=user, password=password
+            host=host, port=port, username=user, password=password
         )
         print("Connected to ClickHouse successfully")
         temp_client.command(f"CREATE DATABASE IF NOT EXISTS {db}")
         print(f"Created database {db}")
         # Now connect with the database
         self.client = clickhouse_connect.get_client(
-            host="clickhouse", port=8123, username=user, password=password, database=db
+            host=host, port=port, username=user, password=password, database=db
         )
         print(f"Connected to database {db}")
         self._ensure_schema(db)
@@ -77,12 +88,27 @@ class ClickHouseStorage(IStorage):
                     f"('{trade['instId']}', {trade['ts_event_ms']}, '{trade['tradeId']}', {trade['px']}, {trade['sz']}, '{trade['side']}', {trade['ts_ingest_ms']})"
                 )
 
-            query = f"INSERT INTO market_raw.trades VALUES {', '.join(values)}"
+            query = f"INSERT INTO default.trades VALUES {', '.join(values)}"
             print(f"Query: {query}")
 
+            # Parse DSN to get host and port for auth
+            from urllib.parse import urlparse
+            parsed = urlparse(self.dsn)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8123
+            
+            # Create auth URL with credentials
+            auth_url = f"http://{host}:{port}/"
+            
+            # Use stored credentials
+            user = self.user
+            password = self.password
+            
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    "http://clickhouse:8123/", data=query
+                    auth_url, 
+                    data=query,
+                    auth=aiohttp.BasicAuth(user, password)
                 ) as response:
                     result = await response.text()
                     print(f"HTTP insert result: {result}, status: {response.status}")

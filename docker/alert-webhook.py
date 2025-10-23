@@ -12,8 +12,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Настройки для отправки уведомлений
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"  # Замените на ваш токен
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"     # Замените на ваш chat ID
+import os
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID_BOT", os.getenv("TELEGRAM_CHAT_ID", "YOUR_CHAT_ID"))
 
 def send_telegram_alert(alert_data):
     """Отправка алерта в Telegram"""
