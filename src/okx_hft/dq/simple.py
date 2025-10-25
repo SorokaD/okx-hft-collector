@@ -1,6 +1,7 @@
 
 from okx_hft.dq.interfaces import IDQ
 
+
 class SimpleDQ(IDQ):
     def check_checksum(self, checksum: int, book_levels: int = 25) -> bool:
         # TODO: implement OKX CRC32 spec (books-l2-tbt); placeholder returns True

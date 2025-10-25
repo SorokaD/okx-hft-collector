@@ -7,6 +7,8 @@ from okx_hft.metrics.server import reconnects_total, events_total
 from okx_hft.storage.clickhouse import ClickHouseStorage
 from okx_hft.handlers.trades import TradesHandler
 from okx_hft.handlers.orderbook import OrderBookHandler
+from okx_hft.handlers.funding_rate import FundingRateHandler
+from okx_hft.handlers.mark_price import MarkPriceHandler
 
 log = get_logger(__name__)
 
@@ -35,6 +37,8 @@ class OKXWebSocketClient:
         # Инициализируем обработчики
         self.trades_handler = TradesHandler(self.storage)
         self.orderbook_handler = OrderBookHandler(self.storage)
+        self.funding_rate_handler = FundingRateHandler(self.storage)
+        self.mark_price_handler = MarkPriceHandler(self.storage)
 
     def _sub_payload(self) -> Dict[str, Any]:
         args = [{"channel": ch, "instId": inst} for ch in self.s.CHANNELS for inst in self.s.INSTRUMENTS]
@@ -87,6 +91,10 @@ class OKXWebSocketClient:
                 else:
                     # Если action не указан, считаем snapshot
                     await self.orderbook_handler.on_snapshot(data)
+            elif channel == "funding-rate":
+                await self.funding_rate_handler.on_funding_rate(data)
+            elif channel == "mark-price":
+                await self.mark_price_handler.on_mark_price(data)
             else:
                 log.warning(f"Unknown channel: {channel}")
 
@@ -97,6 +105,8 @@ class OKXWebSocketClient:
                 await asyncio.sleep(5.0)
                 await self.trades_handler.flush()
                 await self.orderbook_handler.flush()
+                await self.funding_rate_handler.flush()
+                await self.mark_price_handler.flush()
             except asyncio.CancelledError:
                 break
             except Exception as e:

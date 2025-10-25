@@ -50,6 +50,20 @@ class ClickHouseStorage(IStorage):
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms, tradeId)"
         )
+        self.client.command(
+            "CREATE TABLE IF NOT EXISTS funding_rates("
+            "instId String, fundingRate Float64, fundingTime UInt64, nextFundingTime UInt64, "
+            "ts_event_ms UInt64, ts_ingest_ms UInt64"
+            ") ENGINE=MergeTree() "
+            "ORDER BY (instId, ts_event_ms)"
+        )
+        self.client.command(
+            "CREATE TABLE IF NOT EXISTS mark_prices("
+            "instId String, markPx Float64, idxPx Float64, idxTs UInt64, "
+            "ts_event_ms UInt64, ts_ingest_ms UInt64"
+            ") ENGINE=MergeTree() "
+            "ORDER BY (instId, ts_event_ms)"
+        )
 
     async def write_lob_updates(self, batch: Sequence[Dict[str, Any]]) -> None:
         if not batch:
@@ -116,6 +130,104 @@ class ClickHouseStorage(IStorage):
         except Exception as e:
             print(f"ClickHouse insert error: {str(e)}")
             raise Exception(f"ClickHouse error writing trades: {str(e)}")
+
+    async def write_funding_rates(self, batch: Sequence[Dict[str, Any]]) -> None:
+        if not batch:
+            return
+        try:
+            print(f"Inserting {len(batch)} funding rates to ClickHouse")
+            print(f"Sample data: {batch[0] if batch else 'empty'}")
+
+            # Попробуем использовать HTTP API напрямую
+            import asyncio
+            import aiohttp
+
+            # Формируем INSERT запрос
+            values = []
+            for rate in batch:
+                values.append(
+                    f"('{rate['instId']}', {rate['fundingRate']}, "
+                    f"{rate['fundingTime']}, {rate['nextFundingTime']}, "
+                    f"{rate['ts_event_ms']}, {rate['ts_ingest_ms']})"
+                )
+
+            query = f"INSERT INTO default.funding_rates VALUES {', '.join(values)}"
+            print(f"Query: {query}")
+
+            # Parse DSN to get host and port for auth
+            from urllib.parse import urlparse
+            parsed = urlparse(self.dsn)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8123
+            
+            # Create auth URL with credentials
+            auth_url = f"http://{host}:{port}/"
+            
+            # Use stored credentials
+            user = self.user
+            password = self.password
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    auth_url, 
+                    data=query,
+                    auth=aiohttp.BasicAuth(user, password)
+                ) as response:
+                    result = await response.text()
+                    print(f"HTTP insert result: {result}, status: {response.status}")
+
+        except Exception as e:
+            print(f"ClickHouse insert error: {str(e)}")
+            raise Exception(f"ClickHouse error writing funding_rates: {str(e)}")
+
+    async def write_mark_prices(self, batch: Sequence[Dict[str, Any]]) -> None:
+        if not batch:
+            return
+        try:
+            print(f"Inserting {len(batch)} mark prices to ClickHouse")
+            print(f"Sample data: {batch[0] if batch else 'empty'}")
+
+            # Попробуем использовать HTTP API напрямую
+            import asyncio
+            import aiohttp
+
+            # Формируем INSERT запрос
+            values = []
+            for price in batch:
+                values.append(
+                    f"('{price['instId']}', {price['markPx']}, "
+                    f"{price['idxPx']}, {price['idxTs']}, "
+                    f"{price['ts_event_ms']}, {price['ts_ingest_ms']})"
+                )
+
+            query = f"INSERT INTO default.mark_prices VALUES {', '.join(values)}"
+            print(f"Query: {query}")
+
+            # Parse DSN to get host and port for auth
+            from urllib.parse import urlparse
+            parsed = urlparse(self.dsn)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8123
+            
+            # Create auth URL with credentials
+            auth_url = f"http://{host}:{port}/"
+            
+            # Use stored credentials
+            user = self.user
+            password = self.password
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    auth_url, 
+                    data=query,
+                    auth=aiohttp.BasicAuth(user, password)
+                ) as response:
+                    result = await response.text()
+                    print(f"HTTP insert result: {result}, status: {response.status}")
+
+        except Exception as e:
+            print(f"ClickHouse insert error: {str(e)}")
+            raise Exception(f"ClickHouse error writing mark_prices: {str(e)}")
 
     async def flush(self) -> None:
         pass

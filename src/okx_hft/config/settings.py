@@ -4,8 +4,8 @@ from pydantic import Field
 from typing import List
 
 class Settings(BaseSettings):
-    INSTRUMENTS: List[str] = Field(default_factory=lambda: ["BTC-USDT","ETH-USDT"])
-    CHANNELS: List[str] = Field(default_factory=lambda: ["books-l2-tbt","trades"])
+    INSTRUMENTS: List[str] = Field(default_factory=lambda: ["BTC-USDT","ETH-USDT","BTC-USDT-SWAP","ETH-USDT-SWAP"])
+    CHANNELS: List[str] = Field(default_factory=lambda: ["books-l2-tbt","trades","funding-rate","mark-price"])
     OKX_WS_URL: str = "wss://ws.okx.com:8443/ws/v5/public"
 
     CLICKHOUSE_DSN: str = "http://localhost:8123"
