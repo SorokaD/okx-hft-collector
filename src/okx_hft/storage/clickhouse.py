@@ -64,6 +64,30 @@ class ClickHouseStorage(IStorage):
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms)"
         )
+        self.client.command(
+            "CREATE TABLE IF NOT EXISTS tickers("
+            "instId String, last Float64, lastSz Float64, bidPx Float64, "
+            "bidSz Float64, askPx Float64, askSz Float64, open24h Float64, "
+            "high24h Float64, low24h Float64, vol24h Float64, volCcy24h Float64, "
+            "ts_event_ms UInt64, ts_ingest_ms UInt64"
+            ") ENGINE=MergeTree() "
+            "ORDER BY (instId, ts_event_ms)"
+        )
+        self.client.command(
+            "CREATE TABLE IF NOT EXISTS open_interest("
+            "instId String, oi Float64, oiCcy Float64, "
+            "ts_event_ms UInt64, ts_ingest_ms UInt64"
+            ") ENGINE=MergeTree() "
+            "ORDER BY (instId, ts_event_ms)"
+        )
+        self.client.command(
+            "CREATE TABLE IF NOT EXISTS liquidations("
+            "instId String, posSide String, side String, sz Float64, "
+            "bkPx Float64, bkLoss Float64, ccy String, "
+            "ts_event_ms UInt64, ts_ingest_ms UInt64"
+            ") ENGINE=MergeTree() "
+            "ORDER BY (instId, ts_event_ms)"
+        )
 
     async def write_lob_updates(self, batch: Sequence[Dict[str, Any]]) -> None:
         if not batch:
@@ -228,6 +252,137 @@ class ClickHouseStorage(IStorage):
         except Exception as e:
             print(f"ClickHouse insert error: {str(e)}")
             raise Exception(f"ClickHouse error writing mark_prices: {str(e)}")
+
+    async def write_tickers(self, batch: Sequence[Dict[str, Any]]) -> None:
+        if not batch:
+            return
+        try:
+            print(f"Inserting {len(batch)} tickers to ClickHouse")
+            print(f"Sample data: {batch[0] if batch else 'empty'}")
+
+            import asyncio
+            import aiohttp
+
+            values = []
+            for ticker in batch:
+                values.append(
+                    f"('{ticker['instId']}', {ticker['last']}, "
+                    f"{ticker['lastSz']}, {ticker['bidPx']}, {ticker['bidSz']}, "
+                    f"{ticker['askPx']}, {ticker['askSz']}, {ticker['open24h']}, "
+                    f"{ticker['high24h']}, {ticker['low24h']}, {ticker['vol24h']}, "
+                    f"{ticker['volCcy24h']}, {ticker['ts_event_ms']}, "
+                    f"{ticker['ts_ingest_ms']})"
+                )
+
+            query = f"INSERT INTO default.tickers VALUES {', '.join(values)}"
+            print(f"Query: {query}")
+
+            from urllib.parse import urlparse
+            parsed = urlparse(self.dsn)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8123
+            
+            auth_url = f"http://{host}:{port}/"
+            user = self.user
+            password = self.password
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    auth_url, 
+                    data=query,
+                    auth=aiohttp.BasicAuth(user, password)
+                ) as response:
+                    result = await response.text()
+                    print(f"HTTP insert result: {result}, status: {response.status}")
+
+        except Exception as e:
+            print(f"ClickHouse insert error: {str(e)}")
+            raise Exception(f"ClickHouse error writing tickers: {str(e)}")
+
+    async def write_open_interest(self, batch: Sequence[Dict[str, Any]]) -> None:
+        if not batch:
+            return
+        try:
+            print(f"Inserting {len(batch)} open interest records to ClickHouse")
+            print(f"Sample data: {batch[0] if batch else 'empty'}")
+
+            import asyncio
+            import aiohttp
+
+            values = []
+            for oi in batch:
+                values.append(
+                    f"('{oi['instId']}', {oi['oi']}, {oi['oiCcy']}, "
+                    f"{oi['ts_event_ms']}, {oi['ts_ingest_ms']})"
+                )
+
+            query = f"INSERT INTO default.open_interest VALUES {', '.join(values)}"
+            print(f"Query: {query}")
+
+            from urllib.parse import urlparse
+            parsed = urlparse(self.dsn)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8123
+            
+            auth_url = f"http://{host}:{port}/"
+            user = self.user
+            password = self.password
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    auth_url, 
+                    data=query,
+                    auth=aiohttp.BasicAuth(user, password)
+                ) as response:
+                    result = await response.text()
+                    print(f"HTTP insert result: {result}, status: {response.status}")
+
+        except Exception as e:
+            print(f"ClickHouse insert error: {str(e)}")
+            raise Exception(f"ClickHouse error writing open_interest: {str(e)}")
+
+    async def write_liquidations(self, batch: Sequence[Dict[str, Any]]) -> None:
+        if not batch:
+            return
+        try:
+            print(f"Inserting {len(batch)} liquidations to ClickHouse")
+            print(f"Sample data: {batch[0] if batch else 'empty'}")
+
+            import asyncio
+            import aiohttp
+
+            values = []
+            for liq in batch:
+                values.append(
+                    f"('{liq['instId']}', '{liq['posSide']}', '{liq['side']}', "
+                    f"{liq['sz']}, {liq['bkPx']}, {liq['bkLoss']}, '{liq['ccy']}', "
+                    f"{liq['ts_event_ms']}, {liq['ts_ingest_ms']})"
+                )
+
+            query = f"INSERT INTO default.liquidations VALUES {', '.join(values)}"
+            print(f"Query: {query}")
+
+            from urllib.parse import urlparse
+            parsed = urlparse(self.dsn)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8123
+            
+            auth_url = f"http://{host}:{port}/"
+            user = self.user
+            password = self.password
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    auth_url, 
+                    data=query,
+                    auth=aiohttp.BasicAuth(user, password)
+                ) as response:
+                    result = await response.text()
+                    print(f"HTTP insert result: {result}, status: {response.status}")
+
+        except Exception as e:
+            print(f"ClickHouse insert error: {str(e)}")
+            raise Exception(f"ClickHouse error writing liquidations: {str(e)}")
 
     async def flush(self) -> None:
         pass

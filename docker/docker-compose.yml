@@ -10,7 +10,7 @@ services:
       - "9108:9108"
     environment:
       INSTRUMENTS: '["BTC-USDT","ETH-USDT","BTC-USDT-SWAP","ETH-USDT-SWAP"]'
-      CHANNELS: '["books-l2-tbt","trades","funding-rate","mark-price"]'
+      CHANNELS: '["trades","funding-rate","mark-price","tickers","open-interest"]'
       OKX_WS_URL: "wss://ws.okx.com:8443/ws/v5/public"
       CLICKHOUSE_DSN: "http://host.docker.internal:8123"
       CLICKHOUSE_USER: "hft_user"

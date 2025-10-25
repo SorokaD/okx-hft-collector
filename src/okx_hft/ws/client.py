@@ -9,6 +9,9 @@ from okx_hft.handlers.trades import TradesHandler
 from okx_hft.handlers.orderbook import OrderBookHandler
 from okx_hft.handlers.funding_rate import FundingRateHandler
 from okx_hft.handlers.mark_price import MarkPriceHandler
+from okx_hft.handlers.tickers import TickersHandler
+from okx_hft.handlers.open_interest import OpenInterestHandler
+from okx_hft.handlers.liquidations import LiquidationsHandler
 
 log = get_logger(__name__)
 
@@ -39,6 +42,9 @@ class OKXWebSocketClient:
         self.orderbook_handler = OrderBookHandler(self.storage)
         self.funding_rate_handler = FundingRateHandler(self.storage)
         self.mark_price_handler = MarkPriceHandler(self.storage)
+        self.tickers_handler = TickersHandler(self.storage)
+        self.open_interest_handler = OpenInterestHandler(self.storage)
+        self.liquidations_handler = LiquidationsHandler(self.storage)
 
     def _sub_payload(self) -> Dict[str, Any]:
         args = [{"channel": ch, "instId": inst} for ch in self.s.CHANNELS for inst in self.s.INSTRUMENTS]
@@ -95,6 +101,12 @@ class OKXWebSocketClient:
                 await self.funding_rate_handler.on_funding_rate(data)
             elif channel == "mark-price":
                 await self.mark_price_handler.on_mark_price(data)
+            elif channel == "tickers":
+                await self.tickers_handler.on_ticker(data)
+            elif channel == "open-interest":
+                await self.open_interest_handler.on_open_interest(data)
+            elif channel == "liquidation-orders":
+                await self.liquidations_handler.on_liquidation(data)
             else:
                 log.warning(f"Unknown channel: {channel}")
 
@@ -107,6 +119,9 @@ class OKXWebSocketClient:
                 await self.orderbook_handler.flush()
                 await self.funding_rate_handler.flush()
                 await self.mark_price_handler.flush()
+                await self.tickers_handler.flush()
+                await self.open_interest_handler.flush()
+                await self.liquidations_handler.flush()
             except asyncio.CancelledError:
                 break
             except Exception as e:
