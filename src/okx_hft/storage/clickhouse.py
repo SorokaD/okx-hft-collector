@@ -17,7 +17,8 @@ class ClickHouseStorage(IStorage):
         self.password = password
         
         print(
-            f"Connecting to ClickHouse: host={host}, port={port}, user={user}, db={db}"
+            f"Connecting to ClickHouse: host={host}, "
+            f"port={port}, user={user}, db={db}"
         )
         # First connect without database to create it
         temp_client = clickhouse_connect.get_client(
@@ -35,59 +36,66 @@ class ClickHouseStorage(IStorage):
         print("Schema ensured")
 
     def _ensure_schema(self, db: str) -> None:
+        # Create tables in okx_raw database
         self.client.command(
-            "CREATE TABLE IF NOT EXISTS lob_updates("
+            f"CREATE TABLE IF NOT EXISTS {db}.lob_updates("
             "instId String, ts_event_ms UInt64, seqId UInt64, "
-            "bids Array(Tuple(Float64, Float64)), asks Array(Tuple(Float64, Float64)), "
+            "bids Array(Tuple(Float64, Float64)), "
+            "asks Array(Tuple(Float64, Float64)), "
             "spread Float64, mid Float64, cs_ok UInt8, ts_ingest_ms UInt64"
             ") ENGINE=ReplacingMergeTree(ts_ingest_ms) "
             "ORDER BY (instId, ts_event_ms, seqId)"
         )
         self.client.command(
-            "CREATE TABLE IF NOT EXISTS trades("
-            "instId String, ts_event_ms UInt64, tradeId String, px Float64, sz Float64, "
-            "side String, ts_ingest_ms UInt64"
+            f"CREATE TABLE IF NOT EXISTS {db}.trades("
+            "instId String, ts_event_ms UInt64, tradeId String, "
+            "px Float64, sz Float64, side String, ts_ingest_ms UInt64"
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms, tradeId)"
         )
         self.client.command(
-            "CREATE TABLE IF NOT EXISTS funding_rates("
-            "instId String, fundingRate Float64, fundingTime UInt64, nextFundingTime UInt64, "
+            f"CREATE TABLE IF NOT EXISTS {db}.funding_rates("
+            "instId String, fundingRate Float64, "
+            "fundingTime UInt64, nextFundingTime UInt64, "
             "ts_event_ms UInt64, ts_ingest_ms UInt64"
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms)"
         )
         self.client.command(
-            "CREATE TABLE IF NOT EXISTS mark_prices("
+            f"CREATE TABLE IF NOT EXISTS {db}.mark_prices("
             "instId String, markPx Float64, idxPx Float64, idxTs UInt64, "
             "ts_event_ms UInt64, ts_ingest_ms UInt64"
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms)"
         )
         self.client.command(
-            "CREATE TABLE IF NOT EXISTS tickers("
-            "instId String, last Float64, lastSz Float64, bidPx Float64, "
-            "bidSz Float64, askPx Float64, askSz Float64, open24h Float64, "
-            "high24h Float64, low24h Float64, vol24h Float64, volCcy24h Float64, "
+            f"CREATE TABLE IF NOT EXISTS {db}.tickers("
+            "instId String, last Float64, lastSz Float64, "
+            "bidPx Float64, bidSz Float64, askPx Float64, askSz Float64, "
+            "open24h Float64, high24h Float64, low24h Float64, "
+            "vol24h Float64, volCcy24h Float64, "
             "ts_event_ms UInt64, ts_ingest_ms UInt64"
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms)"
         )
         self.client.command(
-            "CREATE TABLE IF NOT EXISTS open_interest("
+            f"CREATE TABLE IF NOT EXISTS {db}.open_interest("
             "instId String, oi Float64, oiCcy Float64, "
             "ts_event_ms UInt64, ts_ingest_ms UInt64"
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms)"
         )
         self.client.command(
-            "CREATE TABLE IF NOT EXISTS liquidations("
+            f"CREATE TABLE IF NOT EXISTS {db}.liquidations("
             "instId String, posSide String, side String, sz Float64, "
             "bkPx Float64, bkLoss Float64, ccy String, "
             "ts_event_ms UInt64, ts_ingest_ms UInt64"
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms)"
         )
+        
+        # Store db name for use in write methods
+        self.db = db
 
     async def write_lob_updates(self, batch: Sequence[Dict[str, Any]]) -> None:
         if not batch:
@@ -116,17 +124,18 @@ class ClickHouseStorage(IStorage):
             print(f"Sample data: {batch[0] if batch else 'empty'}")
 
             # Попробуем использовать HTTP API напрямую
-            import asyncio
             import aiohttp
 
             # Формируем INSERT запрос
             values = []
             for trade in batch:
                 values.append(
-                    f"('{trade['instId']}', {trade['ts_event_ms']}, '{trade['tradeId']}', {trade['px']}, {trade['sz']}, '{trade['side']}', {trade['ts_ingest_ms']})"
+                    f"('{trade['instId']}', {trade['ts_event_ms']}, "
+                    f"'{trade['tradeId']}', {trade['px']}, {trade['sz']}, "
+                    f"'{trade['side']}', {trade['ts_ingest_ms']})"
                 )
 
-            query = f"INSERT INTO default.trades VALUES {', '.join(values)}"
+            query = f"INSERT INTO {self.db}.trades VALUES {', '.join(values)}"
             print(f"Query: {query}")
 
             # Parse DSN to get host and port for auth
@@ -163,7 +172,6 @@ class ClickHouseStorage(IStorage):
             print(f"Sample data: {batch[0] if batch else 'empty'}")
 
             # Попробуем использовать HTTP API напрямую
-            import asyncio
             import aiohttp
 
             # Формируем INSERT запрос
@@ -175,7 +183,7 @@ class ClickHouseStorage(IStorage):
                     f"{rate['ts_event_ms']}, {rate['ts_ingest_ms']})"
                 )
 
-            query = f"INSERT INTO default.funding_rates VALUES {', '.join(values)}"
+            query = f"INSERT INTO {self.db}.funding_rates VALUES {', '.join(values)}"
             print(f"Query: {query}")
 
             # Parse DSN to get host and port for auth
@@ -224,7 +232,7 @@ class ClickHouseStorage(IStorage):
                     f"{price['ts_event_ms']}, {price['ts_ingest_ms']})"
                 )
 
-            query = f"INSERT INTO default.mark_prices VALUES {', '.join(values)}"
+            query = f"INSERT INTO {self.db}.mark_prices VALUES {', '.join(values)}"
             print(f"Query: {query}")
 
             # Parse DSN to get host and port for auth
@@ -274,7 +282,7 @@ class ClickHouseStorage(IStorage):
                     f"{ticker['ts_ingest_ms']})"
                 )
 
-            query = f"INSERT INTO default.tickers VALUES {', '.join(values)}"
+            query = f"INSERT INTO {self.db}.tickers VALUES {', '.join(values)}"
             print(f"Query: {query}")
 
             from urllib.parse import urlparse
@@ -316,7 +324,7 @@ class ClickHouseStorage(IStorage):
                     f"{oi['ts_event_ms']}, {oi['ts_ingest_ms']})"
                 )
 
-            query = f"INSERT INTO default.open_interest VALUES {', '.join(values)}"
+            query = f"INSERT INTO {self.db}.open_interest VALUES {', '.join(values)}"
             print(f"Query: {query}")
 
             from urllib.parse import urlparse
@@ -359,7 +367,7 @@ class ClickHouseStorage(IStorage):
                     f"{liq['ts_event_ms']}, {liq['ts_ingest_ms']})"
                 )
 
-            query = f"INSERT INTO default.liquidations VALUES {', '.join(values)}"
+            query = f"INSERT INTO {self.db}.liquidations VALUES {', '.join(values)}"
             print(f"Query: {query}")
 
             from urllib.parse import urlparse

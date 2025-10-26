@@ -15,7 +15,7 @@ services:
       CLICKHOUSE_DSN: "http://host.docker.internal:8123"
       CLICKHOUSE_USER: "hft_user"
       CLICKHOUSE_PASSWORD: "hft_password"
-      CLICKHOUSE_DB: "default"
+      CLICKHOUSE_DB: "okx_raw"
       LOCAL_WAL_DIR: "./wal"
       PARQUET_DIR: "./parquet"
       BATCH_MAX_SIZE: "5000"
