@@ -1,5 +1,8 @@
 
-import asyncio, aiohttp, orjson, random
+import asyncio
+import aiohttp
+import orjson
+import random
 from typing import Dict, Any
 from okx_hft.config.settings import Settings
 from okx_hft.utils.logging import get_logger
@@ -11,13 +14,14 @@ from okx_hft.handlers.funding_rate import FundingRateHandler
 from okx_hft.handlers.mark_price import MarkPriceHandler
 from okx_hft.handlers.tickers import TickersHandler
 from okx_hft.handlers.open_interest import OpenInterestHandler
-from okx_hft.handlers.liquidations import LiquidationsHandler
 
 log = get_logger(__name__)
+
 
 def full_jitter_delay(base: float, cap: float, attempt: int) -> float:
     exp = min(cap, base * (2 ** attempt))
     return random.uniform(0, exp)
+
 
 class OKXWebSocketClient:
     def __init__(self, settings: Settings) -> None:
@@ -34,7 +38,10 @@ class OKXWebSocketClient:
             )
             log.info("ClickHouse storage initialized successfully")
         except Exception as e:
-            log.warning(f"Failed to initialize ClickHouse storage: {e}. Working without storage.")
+            log.warning(
+                f"Failed to initialize ClickHouse storage: {e}. "
+                f"Working without storage."
+            )
             self.storage = None
         
         # Инициализируем обработчики
@@ -44,10 +51,13 @@ class OKXWebSocketClient:
         self.mark_price_handler = MarkPriceHandler(self.storage)
         self.tickers_handler = TickersHandler(self.storage)
         self.open_interest_handler = OpenInterestHandler(self.storage)
-        self.liquidations_handler = LiquidationsHandler(self.storage)
 
     def _sub_payload(self) -> Dict[str, Any]:
-        args = [{"channel": ch, "instId": inst} for ch in self.s.CHANNELS for inst in self.s.INSTRUMENTS]
+        args = [
+            {"channel": ch, "instId": inst}
+            for ch in self.s.CHANNELS
+            for inst in self.s.INSTRUMENTS
+        ]
         return {"op": "subscribe", "args": args}
 
     async def run_forever(self) -> None:
@@ -58,8 +68,13 @@ class OKXWebSocketClient:
             except Exception as e:  # transport/protocol fallback; classify further in future
                 reconnects_total.inc()
                 self._attempt += 1
-                delay = full_jitter_delay(self.s.BACKOFF_BASE, self.s.BACKOFF_CAP, self._attempt)
-                log.error(f"ws_error_reconnect: {str(e)}, attempt={self._attempt}, sleep_s={delay}")
+                delay = full_jitter_delay(
+                    self.s.BACKOFF_BASE, self.s.BACKOFF_CAP, self._attempt
+                )
+                log.error(
+                    f"ws_error_reconnect: {str(e)}, attempt={self._attempt}, "
+                    f"sleep_s={delay}"
+                )
                 await asyncio.sleep(delay)
 
     async def _run_once(self) -> None:
@@ -83,7 +98,10 @@ class OKXWebSocketClient:
             events_total.labels(channel=channel, instId=inst).inc()
             
             # Логируем входящие сообщения для отладки
-            log.info(f"Received message: channel={channel}, inst={inst}, data_count={len(data.get('data', []))}")
+            log.info(
+                f"Received message: channel={channel}, inst={inst}, "
+                f"data_count={len(data.get('data', []))}"
+            )
             
             # Маршрутизация сообщений по каналам
             if channel == "trades":
@@ -105,8 +123,6 @@ class OKXWebSocketClient:
                 await self.tickers_handler.on_ticker(data)
             elif channel == "open-interest":
                 await self.open_interest_handler.on_open_interest(data)
-            elif channel == "liquidation-orders":
-                await self.liquidations_handler.on_liquidation(data)
             else:
                 log.warning(f"Unknown channel: {channel}")
 
@@ -121,7 +137,6 @@ class OKXWebSocketClient:
                 await self.mark_price_handler.flush()
                 await self.tickers_handler.flush()
                 await self.open_interest_handler.flush()
-                await self.liquidations_handler.flush()
             except asyncio.CancelledError:
                 break
             except Exception as e:

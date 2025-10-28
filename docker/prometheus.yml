@@ -1,5 +1,6 @@
 global:
-  scrape_interval: 15s
+  scrape_interval: 5s
+  evaluation_interval: 5s
 
 rule_files:
   - "alert_rules.yml"
@@ -14,4 +15,4 @@ scrape_configs:
   - job_name: 'okx-collector'
     static_configs:
       - targets: ['collector:9108']
-    scrape_interval: 5s
+    scrape_interval: 2s

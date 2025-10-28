@@ -38,15 +38,6 @@ class ClickHouseStorage(IStorage):
     def _ensure_schema(self, db: str) -> None:
         # Create tables in okx_raw database
         self.client.command(
-            f"CREATE TABLE IF NOT EXISTS {db}.lob_updates("
-            "instId String, ts_event_ms UInt64, seqId UInt64, "
-            "bids Array(Tuple(Float64, Float64)), "
-            "asks Array(Tuple(Float64, Float64)), "
-            "spread Float64, mid Float64, cs_ok UInt8, ts_ingest_ms UInt64"
-            ") ENGINE=ReplacingMergeTree(ts_ingest_ms) "
-            "ORDER BY (instId, ts_event_ms, seqId)"
-        )
-        self.client.command(
             f"CREATE TABLE IF NOT EXISTS {db}.trades("
             "instId String, ts_event_ms UInt64, tradeId String, "
             "px Float64, sz Float64, side String, ts_ingest_ms UInt64"
@@ -85,36 +76,10 @@ class ClickHouseStorage(IStorage):
             ") ENGINE=MergeTree() "
             "ORDER BY (instId, ts_event_ms)"
         )
-        self.client.command(
-            f"CREATE TABLE IF NOT EXISTS {db}.liquidations("
-            "instId String, posSide String, side String, sz Float64, "
-            "bkPx Float64, bkLoss Float64, ccy String, "
-            "ts_event_ms UInt64, ts_ingest_ms UInt64"
-            ") ENGINE=MergeTree() "
-            "ORDER BY (instId, ts_event_ms)"
-        )
         
         # Store db name for use in write methods
         self.db = db
 
-    async def write_lob_updates(self, batch: Sequence[Dict[str, Any]]) -> None:
-        if not batch:
-            return
-        try:
-            # Используем asyncio.to_thread для синхронного вызова в асинхронном контексте
-            import asyncio
-
-            result = await asyncio.to_thread(
-                self.client.insert,
-                "lob_updates",
-                batch,
-                column_names=list(batch[0].keys()),
-            )
-            print(
-                f"ClickHouse insert result (lob_updates): {result}, type: {type(result)}"
-            )
-        except Exception as e:
-            raise Exception(f"ClickHouse error writing lob_updates: {str(e)}")
 
     async def write_trades(self, batch: Sequence[Dict[str, Any]]) -> None:
         if not batch:
@@ -349,48 +314,6 @@ class ClickHouseStorage(IStorage):
             print(f"ClickHouse insert error: {str(e)}")
             raise Exception(f"ClickHouse error writing open_interest: {str(e)}")
 
-    async def write_liquidations(self, batch: Sequence[Dict[str, Any]]) -> None:
-        if not batch:
-            return
-        try:
-            print(f"Inserting {len(batch)} liquidations to ClickHouse")
-            print(f"Sample data: {batch[0] if batch else 'empty'}")
-
-            import asyncio
-            import aiohttp
-
-            values = []
-            for liq in batch:
-                values.append(
-                    f"('{liq['instId']}', '{liq['posSide']}', '{liq['side']}', "
-                    f"{liq['sz']}, {liq['bkPx']}, {liq['bkLoss']}, '{liq['ccy']}', "
-                    f"{liq['ts_event_ms']}, {liq['ts_ingest_ms']})"
-                )
-
-            query = f"INSERT INTO {self.db}.liquidations VALUES {', '.join(values)}"
-            print(f"Query: {query}")
-
-            from urllib.parse import urlparse
-            parsed = urlparse(self.dsn)
-            host = parsed.hostname or "localhost"
-            port = parsed.port or 8123
-            
-            auth_url = f"http://{host}:{port}/"
-            user = self.user
-            password = self.password
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    auth_url, 
-                    data=query,
-                    auth=aiohttp.BasicAuth(user, password)
-                ) as response:
-                    result = await response.text()
-                    print(f"HTTP insert result: {result}, status: {response.status}")
-
-        except Exception as e:
-            print(f"ClickHouse insert error: {str(e)}")
-            raise Exception(f"ClickHouse error writing liquidations: {str(e)}")
 
     async def flush(self) -> None:
         pass

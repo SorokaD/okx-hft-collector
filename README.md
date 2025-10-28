@@ -159,22 +159,6 @@ CREATE TABLE market_raw.trades (
 ORDER BY (instId, ts_event_ms, tradeId)
 ```
 
-### Таблица lob_updates
-
-```sql
-CREATE TABLE market_raw.lob_updates (
-    instId String,           -- Инструмент
-    ts_event_ms UInt64,      -- Время события
-    seqId UInt64,            -- Последовательный ID
-    bids Array(Tuple(Float64, Float64)),  -- Заявки на покупку [цена, размер]
-    asks Array(Tuple(Float64, Float64)),  -- Заявки на продажу [цена, размер]
-    spread Float64,          -- Спред
-    mid Float64,             -- Средняя цена
-    cs_ok UInt8,             -- Статус проверки контрольной суммы
-    ts_ingest_ms UInt64      -- Время получения
-) ENGINE = ReplacingMergeTree(ts_ingest_ms)
-ORDER BY (instId, ts_event_ms, seqId)
-```
 
 ## ⚙️ Конфигурация
 

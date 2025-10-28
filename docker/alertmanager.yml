@@ -1,8 +1,8 @@
 route:
   group_by: ['alertname']
   group_wait: 0s
-  group_interval: 0s
-  repeat_interval: 1h
+  group_interval: 1s
+  repeat_interval: 5m
   receiver: 'default'
 
 receivers:
@@ -10,3 +10,11 @@ receivers:
     webhook_configs:
       - url: 'http://alert-webhook:5001/webhook'
         send_resolved: true
+
+inhibit_rules:
+  # Подавлять предупреждения если есть критические алерты
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'instance']

@@ -173,8 +173,11 @@ class OrderBookHandler(IOrderBookHandler):
         if self.batch:
             if self.storage:
                 try:
-                    await self.storage.write_lob_updates(self.batch)
-                    log.info(f"Flushed {len(self.batch)} order book updates to storage")
+                    # Удаляем запись в несуществующую таблицу lob_updates
+                    log.info(
+                        f"Skipping flush of {len(self.batch)} order book updates - "
+                        f"lob_updates table removed"
+                    )
                     self.batch = []
                 except Exception as e:
                     log.error(f"Error flushing order book batch: {str(e)}")
