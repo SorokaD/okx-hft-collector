@@ -65,7 +65,7 @@ docker-compose ps
 ### Веб-интерфейсы
 
 - **Prometheus**: http://localhost:9090
-- **Alertmanager**: http://localhost:9093  
+- **Alertmanager**: http://localhost:9095  
 - **Метрики коллектора**: http://localhost:9108/metrics
 - **ClickHouse**: http://localhost:8123
 
