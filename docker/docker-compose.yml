@@ -10,7 +10,7 @@ services:
       - "9108:9108"
     environment:
       INSTRUMENTS: '["BTC-USDT","ETH-USDT","BTC-USDT-SWAP","ETH-USDT-SWAP"]'
-      CHANNELS: '["trades","funding-rate","mark-price","tickers","open-interest"]'
+      CHANNELS: '["trades","funding-rate","mark-price","tickers","open-interest","books"]'
       OKX_WS_URL: "wss://ws.okx.com:8443/ws/v5/public"
       CLICKHOUSE_DSN: "http://host.docker.internal:8123"
       CLICKHOUSE_USER: "hft_user"
@@ -18,8 +18,8 @@ services:
       CLICKHOUSE_DB: "okx_raw"
       LOCAL_WAL_DIR: "./wal"
       PARQUET_DIR: "./parquet"
-      BATCH_MAX_SIZE: "5000"
-      FLUSH_INTERVAL_MS: "150"
+      BATCH_MAX_SIZE: "200"
+      FLUSH_INTERVAL_MS: "100"
       BACKOFF_BASE: "0.5"
       BACKOFF_CAP: "30.0"
       METRICS_PORT: "9108"

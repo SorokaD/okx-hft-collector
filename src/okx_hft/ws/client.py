@@ -46,7 +46,11 @@ class OKXWebSocketClient:
         
         # Инициализируем обработчики
         self.trades_handler = TradesHandler(self.storage)
-        self.orderbook_handler = OrderBookHandler(self.storage)
+        self.orderbook_handler = OrderBookHandler(
+            self.storage,
+            batch_size=self.s.BATCH_MAX_SIZE,
+            flush_ms=self.s.FLUSH_INTERVAL_MS
+        )
         self.funding_rate_handler = FundingRateHandler(self.storage)
         self.mark_price_handler = MarkPriceHandler(self.storage)
         self.tickers_handler = TickersHandler(self.storage)
@@ -80,11 +84,18 @@ class OKXWebSocketClient:
     async def _run_once(self) -> None:
         async with aiohttp.ClientSession() as session:
             async with session.ws_connect(self.s.OKX_WS_URL, heartbeat=20) as ws:
-                await ws.send_json(self._sub_payload())
-                log.info(f"subscribed: {self._sub_payload()}")
+                sub_payload = self._sub_payload()
+                await ws.send_json(sub_payload)
+                log.info(f"Sent subscription: {sub_payload}")
+                
                 async for msg in ws:
                     if msg.type == aiohttp.WSMsgType.TEXT:
                         data = orjson.loads(msg.data)
+                        
+                        # Логируем ответы от сервера на подписку и ошибки
+                        if data.get("event") or data.get("code") or "arg" not in data:
+                            log.info(f"Server response: {data}")
+                        
                         await self._on_message(data)
                     elif msg.type == aiohttp.WSMsgType.ERROR:
                         raise RuntimeError("WS error")
@@ -106,11 +117,18 @@ class OKXWebSocketClient:
             # Маршрутизация сообщений по каналам
             if channel == "trades":
                 await self.trades_handler.on_trade(data)
-            elif channel == "books-l2-tbt":
-                # Проверяем тип сообщения: snapshot или increment
-                if data.get("action") == "snapshot":
+            elif channel in ("books", "books-l2-tbt", "books50-l2-tbt", "books5"):
+                # Логируем входящие данные orderbook для отладки
+                action = data.get("action", "snapshot")
+                log.info(
+                    f"Received orderbook message: channel={channel}, "
+                    f"inst={inst}, action={action}, "
+                    f"data_count={len(data.get('data', []))}"
+                )
+                # Проверяем тип сообщения: snapshot или update
+                if action == "snapshot":
                     await self.orderbook_handler.on_snapshot(data)
-                elif data.get("action") == "update":
+                elif action == "update":
                     await self.orderbook_handler.on_increment(data)
                 else:
                     # Если action не указан, считаем snapshot

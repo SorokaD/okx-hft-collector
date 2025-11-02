@@ -2,13 +2,14 @@
 upd 23.10.25 Все работает в связке с infra, настроены алерты в tg при падении collector
 upd 25.10.25 Все работает, в clickhouse собираются 3 таблицы 
 upd 28.10.25 Все работает, в clickhouse собираются 5 таблиц, работают alerts (тормоз), нет конфликта с портами okx_hft_infra
+upd 01.11.25 Все работает, в clickhouse собираются 7 таблиц, работают alerts (тормоз и странно)
 
 Высокочастотный коллектор данных с биржи OKX для сбора торговых данных и стаканов заявок в реальном времени.
 
 ## 🚀 Возможности
 
 - **WebSocket подключение** к OKX для получения данных в реальном времени
-- **Сбор торговых данных** (trades) для BTC-USDT и ETH-USDT
+- **Сбор торговых данных** (trades, funding-rate, mark-price, tickers, open-interest)
 - **Сбор данных стакана заявок** (orderbook) 
 - **Хранение в ClickHouse** с оптимизированной структурой
 - **Мониторинг и алерты** через Prometheus + Alertmanager
@@ -82,7 +83,7 @@ reconnects_total
 event_loop_lag_ms
 
 # Количество записей в ClickHouse
-SELECT COUNT(*) FROM market_raw.trades
+SELECT COUNT(*) FROM okx_raw.trades
 ```
 
 ### Полезные запросы Prometheus
@@ -148,7 +149,7 @@ receivers:
 ### Таблица trades
 
 ```sql
-CREATE TABLE market_raw.trades (
+CREATE TABLE okx_raw.trades (
     instId String,           -- Инструмент (BTC-USDT, ETH-USDT)
     ts_event_ms UInt64,      -- Время события от OKX (миллисекунды)
     tradeId String,          -- ID сделки
@@ -160,6 +161,94 @@ CREATE TABLE market_raw.trades (
 ORDER BY (instId, ts_event_ms, tradeId)
 ```
 
+### Таблицы Order Book (Level-2, Depth 50, Tick-by-Tick)
+
+Система собирает данные стакана заявок через канал `books` от OKX и сохраняет их в две отдельные таблицы:
+
+#### orderbook_snapshots
+
+Содержит полные снапшоты стакана (топ-50 уровней) на момент события:
+
+```sql
+CREATE TABLE IF NOT EXISTS okx_raw.orderbook_snapshots (
+    instId String,           -- Instrument ID (e.g., BTC-USDT-SWAP)
+    ts_event_ms UInt64,      -- Event timestamp from OKX (milliseconds)
+    ts_event DateTime64(3) ALIAS toDateTime64(ts_event_ms/1000, 3),
+    ts_ingest_ms UInt64,      -- Ingestion timestamp (local, milliseconds)
+    ts_ingest DateTime64(3) ALIAS toDateTime64(ts_ingest_ms/1000, 3),
+    bids Nested (             -- Top 50 bid levels
+        price Decimal(20,8),
+        size  Decimal(20,8)
+    ),
+    asks Nested (             -- Top 50 ask levels
+        price Decimal(20,8),
+        size  Decimal(20,8)
+    ),
+    checksum Int64            -- OKX checksum for validation
+)
+ENGINE = MergeTree()
+ORDER BY (instId, ts_event_ms)
+TTL ts_event + toIntervalDay(7)
+SETTINGS index_granularity = 8192;
+```
+
+#### orderbook_updates
+
+Содержит инкрементальные обновления (только измененные уровни):
+
+```sql
+CREATE TABLE IF NOT EXISTS okx_raw.orderbook_updates (
+    instId String,           -- Instrument ID (e.g., BTC-USDT-SWAP)
+    ts_event_ms UInt64,      -- Event timestamp from OKX (milliseconds)
+    ts_event DateTime64(3) ALIAS toDateTime64(ts_event_ms/1000, 3),
+    ts_ingest_ms UInt64,      -- Ingestion timestamp (local, milliseconds)
+    ts_ingest DateTime64(3) ALIAS toDateTime64(ts_ingest_ms/1000, 3),
+    bids_delta Nested (       -- Changed bid levels (size=0 means remove level)
+        price Decimal(20,8),
+        size  Decimal(20,8)
+    ),
+    asks_delta Nested (       -- Changed ask levels (size=0 means remove level)
+        price Decimal(20,8),
+        size  Decimal(20,8)
+    ),
+    checksum Int64            -- OKX checksum for validation
+)
+ENGINE = MergeTree()
+ORDER BY (instId, ts_event_ms)
+TTL ts_event + toIntervalDay(7)
+SETTINGS index_granularity = 8192;
+```
+
+**Важные замечания:**
+- `*_delta` содержат только измененные уровни (size=0 означает удаление уровня)
+- `*_snapshots` содержат полный топ-50 на момент события
+- Данные автоматически флушатся при достижении размера батча (50 записей) или каждые 5 секунд
+
+#### Примеры запросов
+
+```sql
+-- Последний снапшот
+SELECT * FROM okx_raw.orderbook_snapshots
+WHERE instId='BTC-USDT-SWAP'
+ORDER BY ts_event_ms DESC LIMIT 1;
+
+-- Построить midprice из снапшота
+SELECT 
+    instId, 
+    ts_event, 
+    (arrayElement(asks.price, 1) + arrayElement(bids.price, 1)) / 2 AS mid
+FROM okx_raw.orderbook_snapshots
+ORDER BY ts_event DESC LIMIT 100;
+
+-- Восстановить best bid/ask за время из обновлений
+SELECT
+    instId, 
+    ts_event,
+    arrayElement(bids_delta.price, 1) AS best_bid_price_delta,
+    arrayElement(asks_delta.price, 1) AS best_ask_price_delta
+FROM okx_raw.orderbook_updates
+ORDER BY ts_event DESC LIMIT 100;
+```
 
 ## ⚙️ Конфигурация
 
@@ -167,12 +256,13 @@ ORDER BY (instId, ts_event_ms, tradeId)
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `INSTRUMENTS` | `["BTC-USDT","ETH-USDT"]` | Список инструментов |
-| `CHANNELS` | `["books-l2-tbt","trades"]` | Каналы данных |
+| `INSTRUMENTS` | `["BTC-USDT","ETH-USDT","BTC-USDT-SWAP","ETH-USDT-SWAP"]` | Список инструментов |
+| `CHANNELS` | `["trades","funding-rate","mark-price","tickers","open-interest","books"]` | Каналы данных |
 | `OKX_WS_URL` | `wss://ws.okx.com:8443/ws/v5/public` | URL WebSocket OKX |
-| `CLICKHOUSE_DSN` | `http://clickhouse:8123` | DSN ClickHouse |
-| `BATCH_MAX_SIZE` | `5000` | Максимальный размер батча |
-| `FLUSH_INTERVAL_MS` | `150` | Интервал принудительной отправки (мс) |
+| `CLICKHOUSE_DSN` | `http://localhost:8123` | DSN ClickHouse |
+| `CLICKHOUSE_DB` | `okx_raw` | База данных ClickHouse |
+| `BATCH_MAX_SIZE` | `200` | Максимальный размер батча |
+| `FLUSH_INTERVAL_MS` | `100` | Интервал принудительной отправки (мс) |
 | `METRICS_PORT` | `9108` | Порт для метрик |
 | `LOG_LEVEL` | `INFO` | Уровень логирования |
 
@@ -183,8 +273,8 @@ ORDER BY (instId, ts_event_ms, tradeId)
 ```yaml
 # В docker-compose.yml
 environment:
-  BATCH_MAX_SIZE: "10000"      # Больше записей в батче
-  FLUSH_INTERVAL_MS: "100"     # Чаще отправка
+  BATCH_MAX_SIZE: "5000"       # Больше записей в батче
+  FLUSH_INTERVAL_MS: "50"      # Чаще отправка
 ```
 
 #### Уменьшение нагрузки
@@ -197,18 +287,25 @@ CHANNELS: '["trades"]'
 INSTRUMENTS: '["BTC-USDT"]'
 ```
 
+**Примечания:**
+- Канал `books` включен по умолчанию и собирает данные orderbook (level-2, depth 50)
+- Используются две таблицы: `orderbook_snapshots` (полные снапшоты) и `orderbook_updates` (инкременты)
+- TTL установлен на 7 дней для таблиц orderbook
+- Данные автоматически флушатся при достижении размера батча или каждые 5 секунд через периодический flush
+
 ## 📊 Объем данных
 
-### Ожидаемый объем за сутки
+### Ожидаемый объем данных
 
-| Тип данных | Записей/сек | Записей/день | Размер |
-|------------|-------------|--------------|---------|
-| Trades | ~175 | ~15M | ~1.5 GB |
-| Orderbook | ~55 | ~4.7M | ~2.4 GB |
-| **Итого** | ~230 | ~20M | **~4 GB** |
-
-### За месяц: ~120 GB
-### За год: ~1.5 TB
+| Тип данных | Таблица | TTL |
+|------------|---------|-----|
+| Trades | `okx_raw.trades` | Без ограничений |
+| Funding Rates | `okx_raw.funding_rates` | Без ограничений |
+| Mark Prices | `okx_raw.mark_prices` | Без ограничений |
+| Tickers | `okx_raw.tickers` | Без ограничений |
+| Open Interest | `okx_raw.open_interest` | Без ограничений |
+| Orderbook Snapshots | `okx_raw.orderbook_snapshots` | 7 дней |
+| Orderbook Updates | `okx_raw.orderbook_updates` | 7 дней |
 
 ## 🔧 Управление системой
 
@@ -241,7 +338,7 @@ curl "http://localhost:8123/?query=SELECT%20version()"
 curl "http://localhost:9108/metrics"
 
 # Количество записей в базе
-curl "http://localhost:8123/?query=SELECT%20COUNT(*)%20FROM%20market_raw.trades"
+curl "http://localhost:8123/?query=SELECT%20COUNT(*)%20FROM%20okx_raw.trades"
 ```
 
 ### Очистка данных
@@ -351,20 +448,6 @@ ufw allow 9108  # Метрики коллектора
 - [Prometheus Documentation](https://prometheus.io/docs/)
 - [Docker Compose Reference](https://docs.docker.com/compose/)
 
-## 🤝 Поддержка
-
-При возникновении проблем:
-
-1. Проверьте логи: `docker-compose logs`
-2. Проверьте метрики: http://localhost:9108/metrics
-3. Проверьте алерты: http://localhost:9093
-4. Создайте issue в репозитории
-
 ## 📄 Лицензия
 
 MIT License
-
----
-
-**Версия**: 1.0.0  
-**Последнее обновление**: Октябрь 2025

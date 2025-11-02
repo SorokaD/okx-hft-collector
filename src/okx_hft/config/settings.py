@@ -3,9 +3,26 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import List
 
+
 class Settings(BaseSettings):
-    INSTRUMENTS: List[str] = Field(default_factory=lambda: ["BTC-USDT","ETH-USDT","BTC-USDT-SWAP","ETH-USDT-SWAP"])
-    CHANNELS: List[str] = Field(default_factory=lambda: ["trades","funding-rate","mark-price","tickers","open-interest"])
+    INSTRUMENTS: List[str] = Field(
+        default_factory=lambda: [
+            "BTC-USDT",
+            "ETH-USDT",
+            "BTC-USDT-SWAP",
+            "ETH-USDT-SWAP",
+        ]
+    )
+    CHANNELS: List[str] = Field(
+        default_factory=lambda: [
+            "trades",
+            "funding-rate",
+            "mark-price",
+            "tickers",
+            "open-interest",
+            "books",
+        ]
+    )
     OKX_WS_URL: str = "wss://ws.okx.com:8443/ws/v5/public"
 
     CLICKHOUSE_DSN: str = "http://localhost:8123"
