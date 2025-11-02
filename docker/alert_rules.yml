@@ -1,80 +1,80 @@
 groups:
   - name: okx-collector-alerts
     rules:
-      # Алерт на разрыв WebSocket соединения - БЫСТРЫЙ
+      # Алерт на разрыв WebSocket соединения
       - alert: WebSocketConnectionDown
         expr: increase(reconnects_total[1m]) > 0
-        for: 10s
+        for: 1m      # Увеличил до 1 минуты, чтобы не спамить при кратковременных переподключениях
         labels:
           severity: critical
         annotations:
           summary: "OKX WebSocket reconnected"
           description: "WebSocket connection to OKX was reestablished. Reconnects in last 1 minute: {{ $value }}"
 
-      # Алерт на отсутствие данных - БЫСТРЫЙ
+      # Алерт на отсутствие данных
       - alert: NoDataReceived
         expr: rate(events_total[1m]) == 0
-        for: 30s
+        for: 2m      # Увеличил до 2 минут, чтобы не паниковать при кратковременных паузах
         labels:
           severity: critical
         annotations:
           summary: "No data received from OKX"
           description: "No events received from OKX WebSocket in the last 1 minute"
 
-      # Алерт на высокую задержку event loop - БЫСТРЫЙ
+      # Алерт на высокую задержку event loop
       - alert: HighEventLoopLag
         expr: event_loop_lag_ms > 50
-        for: 15s
+        for: 1m      # Увеличил до 1 минуты, чтобы игнорировать кратковременные скачки
         labels:
           severity: warning
         annotations:
           summary: "High event loop lag"
           description: "Event loop lag is {{ $value }}ms, which is above 50ms threshold"
 
-      # Алерт на ошибки вставки данных - БЫСТРЫЙ
+      # Алерт на ошибки вставки данных
       - alert: DataInsertionErrors
         expr: increase(events_total{channel="unknown"}[1m]) > 5
-        for: 15s
+        for: 1m      # Увеличил до 1 минуты
         labels:
           severity: warning
         annotations:
           summary: "High number of unknown events"
           description: "{{ $value }} unknown events received in the last 1 minute"
 
-      # Алерт на недоступность коллектора - БЫСТРЫЙ
+      # Алерт на недоступность коллектора
       - alert: CollectorDown
         expr: up{job="okx-collector"} == 0
-        for: 10s
+        for: 30s     # Увеличил до 30 секунд, чтобы не паниковать при временных проблемах с метриками
         labels:
           severity: critical
         annotations:
           summary: "OKX Collector is down"
           description: "OKX Collector service is not responding"
 
-      # Алерт на недоступность ClickHouse - БЫСТРЫЙ
+      # Алерт на недоступность ClickHouse
       - alert: ClickHouseDown
         expr: up{job="clickhouse"} == 0
-        for: 10s
+        for: 30s     # Увеличил до 30 секунд
         labels:
           severity: critical
         annotations:
           summary: "ClickHouse is down"
           description: "ClickHouse service is not responding"
 
-      # НОВЫЙ: Алерт на низкую частоту событий
+      # Алерт на низкую частоту событий
       - alert: LowEventRate
         expr: rate(events_total[1m]) < 0.1
-        for: 30s
+        for: 2m      # Увеличил до 2 минут
         labels:
           severity: warning
         annotations:
           summary: "Low event rate from OKX"
           description: "Event rate is {{ $value }} events/sec, which is below normal threshold"
 
-      # НОВЫЙ: Алерт на высокое потребление памяти
+      # Алерт на высокое потребление памяти
       - alert: HighMemoryUsage
         expr: process_resident_memory_bytes / 1024 / 1024 > 500
-        for: 30s
+        for: 2m      # Увеличил до 2 минут
         labels:
           severity: warning
         annotations:
