@@ -49,8 +49,12 @@ class OKXWebSocketClient:
         self.orderbook_handler = OrderBookHandler(
             self.storage,
             batch_size=self.s.BATCH_MAX_SIZE,
-            flush_ms=self.s.FLUSH_INTERVAL_MS
+            flush_ms=self.s.FLUSH_INTERVAL_MS,
+            snapshot_interval_sec=self.s.SNAPSHOT_INTERVAL_SEC,
+            max_depth=self.s.ORDERBOOK_MAX_DEPTH
         )
+        # Set resubscribe callback for orderbook
+        self.orderbook_handler.set_resubscribe_callback(self._resubscribe_orderbook)
         self.funding_rate_handler = FundingRateHandler(self.storage)
         self.mark_price_handler = MarkPriceHandler(self.storage)
         self.tickers_handler = TickersHandler(self.storage)
@@ -65,12 +69,29 @@ class OKXWebSocketClient:
         return {"op": "subscribe", "args": args}
 
     async def run_forever(self) -> None:
+        # Start periodic snapshot generation once event loop is running
+        try:
+            self.orderbook_handler.start_periodic_snapshots()
+        except Exception as e:
+            log.error(
+                f"Failed to start periodic snapshots in run_forever: {e}",
+                exc_info=True
+            )
+        
         while True:
             try:
                 await self._run_once()
                 self._attempt = 0
             except Exception as e:  # transport/protocol fallback; classify further in future
                 reconnects_total.inc()
+                # Generate snapshots before reconnect
+                try:
+                    await self.orderbook_handler.on_reconnect()
+                except Exception as reconnect_err:
+                    log.error(
+                        f"Error generating snapshots on reconnect: {reconnect_err}"
+                    )
+                
                 self._attempt += 1
                 delay = full_jitter_delay(
                     self.s.BACKOFF_BASE, self.s.BACKOFF_CAP, self._attempt
@@ -144,6 +165,15 @@ class OKXWebSocketClient:
             else:
                 log.warning(f"Unknown channel: {channel}")
 
+    async def _resubscribe_orderbook(self, inst_id: str) -> None:
+        """Resubscribe to orderbook for specific instrument (called on checksum mismatch)"""
+        log.warning(
+            f"Resubscribe requested for {inst_id} (checksum mismatch)"
+        )
+        # TODO: Implement actual resubscribe logic
+        # For now, just log - full implementation would require WS connection access
+        # The book will be reset and wait for new snapshot
+    
     async def periodic_flush(self) -> None:
         """Периодическая отправка батчей каждые 5 секунд"""
         while True:

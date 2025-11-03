@@ -20,6 +20,8 @@ services:
       PARQUET_DIR: "./parquet"
       BATCH_MAX_SIZE: "200"
       FLUSH_INTERVAL_MS: "100"
+      SNAPSHOT_INTERVAL_SEC: "30.0"
+      ORDERBOOK_MAX_DEPTH: "50"
       BACKOFF_BASE: "0.5"
       BACKOFF_CAP: "30.0"
       METRICS_PORT: "9108"

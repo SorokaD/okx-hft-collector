@@ -89,20 +89,21 @@ class ClickHouseStorage(IStorage):
                 print(f"ERROR creating table {db}.{table_name}: {str(e)}")
                 raise
         
-        # Create orderbook_snapshots table
+        # Create orderbook_snapshots table (normalized: one row per level)
         try:
             create_snapshots_sql = (
                 f"CREATE TABLE IF NOT EXISTS {db}.orderbook_snapshots ("
+                "snapshot_id String, "
                 "instId String, "
                 "ts_event_ms UInt64, "
                 "ts_event DateTime64(3) ALIAS toDateTime64(ts_event_ms/1000, 3), "
                 "ts_ingest_ms UInt64, "
                 "ts_ingest DateTime64(3) ALIAS toDateTime64(ts_ingest_ms/1000, 3), "
-                "bids Nested (price Decimal(20,8), size Decimal(20,8)), "
-                "asks Nested (price Decimal(20,8), size Decimal(20,8)), "
-                "checksum Int64"
+                "side String, "
+                "price Decimal(20,8), "
+                "size Decimal(20,8)"
                 ") ENGINE = MergeTree() "
-                "ORDER BY (instId, ts_event_ms) "
+                "ORDER BY (instId, ts_event_ms, snapshot_id, side, price) "
                 "TTL toDateTime64(ts_event_ms/1000, 3) + toIntervalDay(7) "
                 "SETTINGS index_granularity = 8192"
             )
@@ -456,43 +457,64 @@ class ClickHouseStorage(IStorage):
             raise Exception(f"ClickHouse error writing open_interest: {str(e)}")
 
     async def write_orderbook_snapshots(self, batch: Sequence[Dict[str, Any]]) -> None:
-        """Write orderbook snapshots using JSONEachRow format for Nested types"""
+        """
+        Write orderbook snapshots using JSONEachRow format.
+        Expects normalized rows: each row is one level (bid/ask) of a snapshot.
+        Format: {snapshot_id (UUID), instId, ts_event_ms, side (1=bid, 2=ask), 
+        price (Float64), size (Float64), level (UInt16)}
+        """
+        from okx_hft.utils.logging import get_logger
+        log = get_logger(__name__)
+        
         if not batch:
+            log.warning("write_orderbook_snapshots called with empty batch")
             return
+        
         try:
             import aiohttp
             import orjson
-            from okx_hft.utils.logging import get_logger
+            log.info(
+                f"=== write_orderbook_snapshots CALLED === "
+                f"Inserting {len(batch)} orderbook snapshot rows to ClickHouse"
+            )
             
-            log = get_logger(__name__)
-            log.info(f"Inserting {len(batch)} orderbook snapshots to ClickHouse")
+            # Log sample data for debugging (use INFO level to ensure visibility)
+            if batch:
+                log.info(
+                    f"Sample snapshot row (first): {batch[0]}, "
+                    f"total_rows={len(batch)}"
+                )
+                # Check required fields (matching table schema)
+                required_fields = ['snapshot_id', 'instId', 'ts_event_ms', 
+                                  'side', 'price', 'size', 'level']
+                missing_fields = [f for f in required_fields if f not in batch[0]]
+                if missing_fields:
+                    log.error(
+                        f"Missing required fields in snapshot row: {missing_fields}"
+                    )
+                # Log actual fields for debugging
+                log.debug(f"Actual fields in row: {list(batch[0].keys())}")
             
             from urllib.parse import urlparse
             parsed = urlparse(self.dsn)
             host = parsed.hostname or "localhost"
             port = parsed.port or 8123
             
-            # Prepare JSON rows for JSONEachRow format
+            # Prepare JSON rows for JSONEachRow format (already normalized)
             rows = []
-            for snapshot in batch:
-                # Format Nested types: bids.price and bids.size as arrays
-                row = {
-                    "instId": snapshot["instId"],
-                    "ts_event_ms": snapshot["ts_event_ms"],
-                    "ts_ingest_ms": snapshot["ts_ingest_ms"],
-                    "checksum": snapshot.get("checksum", 0),
-                    "bids.price": [float(level["price"]) for level in snapshot.get("bids", [])],
-                    "bids.size": [float(level["size"]) for level in snapshot.get("bids", [])],
-                    "asks.price": [float(level["price"]) for level in snapshot.get("asks", [])],
-                    "asks.size": [float(level["size"]) for level in snapshot.get("asks", [])],
-                }
-                rows.append(orjson.dumps(row).decode('utf-8'))
+            for row_data in batch:
+                row_json = orjson.dumps(row_data).decode('utf-8')
+                rows.append(row_json)
             
             # Join rows with newlines for JSONEachRow format
             data = "\n".join(rows)
+            log.info(f"Prepared {len(rows)} JSON rows, data_size={len(data)} bytes")
             
             # Use JSONEachRow format
-            url = f"http://{host}:{port}/?query=INSERT INTO {self.db}.orderbook_snapshots FORMAT JSONEachRow"
+            url = (
+                f"http://{host}:{port}/"
+                f"?query=INSERT INTO {self.db}.orderbook_snapshots FORMAT JSONEachRow"
+            )
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -503,13 +525,28 @@ class ClickHouseStorage(IStorage):
                 ) as response:
                     result = await response.text()
                     if response.status != 200:
-                        log.error(f"ClickHouse HTTP error: {response.status}, {result}")
-                        raise Exception(f"ClickHouse HTTP error: {response.status}, {result}")
-                    log.info(f"Inserted {len(batch)} orderbook snapshots, status: {response.status}")
+                        log.error(
+                            f"ClickHouse HTTP error: status={response.status}, "
+                            f"response={result}, "
+                            f"sample_row={batch[0] if batch else 'empty'}, "
+                            f"batch_size={len(batch)}"
+                        )
+                        raise Exception(
+                            f"ClickHouse HTTP error: {response.status}, {result}"
+                        )
+                    log.info(
+                        f"Inserted {len(batch)} orderbook snapshot rows, "
+                        f"status: {response.status}, "
+                        f"response: {result[:200] if result else 'empty'}"
+                    )
                     
         except Exception as e:
-            log.error(f"ClickHouse insert error for orderbook_snapshots: {str(e)}")
-            raise Exception(f"ClickHouse error writing orderbook_snapshots: {str(e)}")
+            log.error(
+                f"ClickHouse insert error for orderbook_snapshots: {str(e)}"
+            )
+            raise Exception(
+                f"ClickHouse error writing orderbook_snapshots: {str(e)}"
+            )
 
     async def write_orderbook_updates(self, batch: Sequence[Dict[str, Any]]) -> None:
         """Write orderbook updates using JSONEachRow format for Nested types"""

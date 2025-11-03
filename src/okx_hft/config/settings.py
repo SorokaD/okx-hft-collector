@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     BATCH_MAX_SIZE: int = 5000
     FLUSH_INTERVAL_MS: int = 150
 
+    # Orderbook snapshot settings
+    SNAPSHOT_INTERVAL_SEC: float = 30.0  # Default interval for periodic snapshots
+    ORDERBOOK_MAX_DEPTH: int = 50  # Max depth levels to store
+
     BACKOFF_BASE: float = 0.5
     BACKOFF_CAP: float = 30.0
 
