@@ -7,8 +7,7 @@ from typing import List
 class Settings(BaseSettings):
     INSTRUMENTS: List[str] = Field(
         default_factory=lambda: [
-            "BTC-USDT",
-            "ETH-USDT",
+ 
             "BTC-USDT-SWAP",
             "ETH-USDT-SWAP",
         ]

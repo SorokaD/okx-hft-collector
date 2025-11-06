@@ -9,7 +9,7 @@ services:
     ports:
       - "9108:9108"
     environment:
-      INSTRUMENTS: '["BTC-USDT","ETH-USDT","BTC-USDT-SWAP","ETH-USDT-SWAP"]'
+      INSTRUMENTS: '["BTC-USDT-SWAP","ETH-USDT-SWAP"]'
       CHANNELS: '["trades","funding-rate","mark-price","tickers","open-interest","books"]'
       OKX_WS_URL: "wss://ws.okx.com:8443/ws/v5/public"
       CLICKHOUSE_DSN: "http://host.docker.internal:8123"
