@@ -61,14 +61,14 @@ docker-compose ps
 |--------|------|----------|
 | ClickHouse | 8123, 9000 | База данных для хранения рыночных данных |
 | Collector | 9108 | Основной сервис сбора данных |
-| Prometheus | 9090 | Сбор и хранение метрик |
-| Alertmanager | 9093 | Обработка и отправка алертов |
+| Prometheus | 9104 | Сбор и хранение метрик |
+| Alertmanager | 9095 | Обработка и отправка алертов |
 
 ## 📈 Мониторинг
 
 ### Веб-интерфейсы
 
-- **Prometheus**: http://localhost:9090
+- **Prometheus**: http://localhost:9104
 - **Alertmanager**: http://localhost:9095  
 - **Метрики коллектора**: http://localhost:9108/metrics
 - **ClickHouse**: http://localhost:8123
@@ -259,7 +259,7 @@ ORDER BY ts_event DESC LIMIT 100;
 
 | Переменная | По умолчанию | Описание |
 |------------|--------------|----------|
-| `INSTRUMENTS` | `["BTC-USDT","ETH-USDT","BTC-USDT-SWAP","ETH-USDT-SWAP"]` | Список инструментов |
+| `INSTRUMENTS` | `["BTC-USDT-SWAP","ETH-USDT-SWAP"]` | Список инструментов |
 | `CHANNELS` | `["trades","funding-rate","mark-price","tickers","open-interest","books"]` | Каналы данных |
 | `OKX_WS_URL` | `wss://ws.okx.com:8443/ws/v5/public` | URL WebSocket OKX |
 | `CLICKHOUSE_DSN` | `http://localhost:8123` | DSN ClickHouse |
@@ -395,10 +395,10 @@ curl "http://localhost:9108/metrics" | grep events_total
 1. **Алерты не приходят:**
 ```bash
 # Проверьте статус Alertmanager
-curl "http://localhost:9093/api/v2/status"
+curl "http://localhost:9095/api/v2/status"
 
 # Проверьте правила в Prometheus
-# Перейдите в http://localhost:9090/alerts
+# Перейдите в http://localhost:9104/alerts
 ```
 
 ## 📝 Логирование
@@ -432,7 +432,7 @@ docker-compose logs --tail=100 collector
 ### Рекомендации
 
 1. **Используйте HTTPS** для внешних подключений
-2. **Ограничьте доступ** к портам 9090, 9093 (Prometheus, Alertmanager)
+2. **Ограничьте доступ** к портам 9104, 9095 (Prometheus, Alertmanager)
 3. **Регулярно обновляйте** Docker образы
 4. **Мониторьте ресурсы** системы
 
