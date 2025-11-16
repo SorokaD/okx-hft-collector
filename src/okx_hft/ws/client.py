@@ -7,7 +7,7 @@ from typing import Dict, Any
 from okx_hft.config.settings import Settings
 from okx_hft.utils.logging import get_logger
 from okx_hft.metrics.server import reconnects_total, events_total
-from okx_hft.storage.clickhouse import ClickHouseStorage
+from okx_hft.storage.postgres import PostgreSQLStorage
 from okx_hft.handlers.trades import TradesHandler
 from okx_hft.handlers.orderbook import OrderBookHandler
 from okx_hft.handlers.funding_rate import FundingRateHandler
@@ -28,21 +28,8 @@ class OKXWebSocketClient:
         self.s = settings
         self._attempt = 0
         
-        # Пытаемся создать ClickHouse storage, если не получается - работаем без него
-        try:
-            self.storage = ClickHouseStorage(
-                dsn=self.s.CLICKHOUSE_DSN,
-                user=self.s.CLICKHOUSE_USER,
-                password=self.s.CLICKHOUSE_PASSWORD,
-                db=self.s.CLICKHOUSE_DB,
-            )
-            log.info("ClickHouse storage initialized successfully")
-        except Exception as e:
-            log.warning(
-                f"Failed to initialize ClickHouse storage: {e}. "
-                f"Working without storage."
-            )
-            self.storage = None
+        # PostgreSQL storage will be initialized in run_forever (async)
+        self.storage = None
         
         # Инициализируем обработчики
         self.trades_handler = TradesHandler(self.storage)
@@ -69,6 +56,33 @@ class OKXWebSocketClient:
         return {"op": "subscribe", "args": args}
 
     async def run_forever(self) -> None:
+        # Initialize PostgreSQL storage
+        try:
+            self.storage = PostgreSQLStorage(
+                host=self.s.POSTGRES_HOST,
+                port=self.s.POSTGRES_PORT,
+                user=self.s.POSTGRES_USER,
+                password=self.s.POSTGRES_PASSWORD,
+                database=self.s.POSTGRES_DB,
+                schema=self.s.POSTGRES_SCHEMA,
+            )
+            await self.storage.connect()
+            log.info("PostgreSQL storage initialized successfully")
+            
+            # Update handlers with storage
+            self.trades_handler.storage = self.storage
+            self.orderbook_handler.storage = self.storage
+            self.funding_rate_handler.storage = self.storage
+            self.mark_price_handler.storage = self.storage
+            self.tickers_handler.storage = self.storage
+            self.open_interest_handler.storage = self.storage
+        except Exception as e:
+            log.warning(
+                f"Failed to initialize PostgreSQL storage: {e}. "
+                f"Working without storage."
+            )
+            self.storage = None
+        
         # Start periodic snapshot generation once event loop is running
         try:
             self.orderbook_handler.start_periodic_snapshots()

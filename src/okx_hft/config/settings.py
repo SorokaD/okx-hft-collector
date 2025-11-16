@@ -24,12 +24,12 @@ class Settings(BaseSettings):
     )
     OKX_WS_URL: str = "wss://ws.okx.com:8443/ws/v5/public"
 
-    CLICKHOUSE_DSN: str = "http://localhost:8123"
-    CLICKHOUSE_USER: str = "default"
-    CLICKHOUSE_PASSWORD: str = ""
-    CLICKHOUSE_DB: str = "market_raw"
-    LOCAL_WAL_DIR: str = "./wal"
-    PARQUET_DIR: str = "./parquet"
+    POSTGRES_HOST: str = "localhost"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
+    POSTGRES_DB: str = "okx_hft"
+    POSTGRES_SCHEMA: str = "okx_raw"
 
     BATCH_MAX_SIZE: int = 5000
     FLUSH_INTERVAL_MS: int = 150

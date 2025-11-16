@@ -12,12 +12,12 @@ services:
       INSTRUMENTS: '["BTC-USDT-SWAP","ETH-USDT-SWAP"]'
       CHANNELS: '["trades","funding-rate","mark-price","tickers","open-interest","books"]'
       OKX_WS_URL: "wss://ws.okx.com:8443/ws/v5/public"
-      CLICKHOUSE_DSN: "http://host.docker.internal:8123"
-      CLICKHOUSE_USER: "hft_user"
-      CLICKHOUSE_PASSWORD: "hft_password"
-      CLICKHOUSE_DB: "okx_raw"
-      LOCAL_WAL_DIR: "./wal"
-      PARQUET_DIR: "./parquet"
+      POSTGRES_HOST: "host.docker.internal"
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
+      POSTGRES_SCHEMA: "okx_raw"
       BATCH_MAX_SIZE: "200"
       FLUSH_INTERVAL_MS: "100"
       SNAPSHOT_INTERVAL_SEC: "30.0"

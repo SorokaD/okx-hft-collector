@@ -21,6 +21,9 @@ async def main() -> None:
     finally:
         flush_task.cancel()
         metrics_task.cancel()
+        # Close PostgreSQL connection
+        if client.storage:
+            await client.storage.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
