@@ -6,13 +6,15 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    env_file:
+      - .env
     ports:
       - "9108:9108"
     environment:
       INSTRUMENTS: '["BTC-USDT-SWAP","ETH-USDT-SWAP"]'
       CHANNELS: '["trades","funding-rate","mark-price","tickers","open-interest","books"]'
       OKX_WS_URL: "wss://ws.okx.com:8443/ws/v5/public"
-      POSTGRES_HOST: "host.docker.internal"
+      POSTGRES_HOST: "${POSTGRES_LINK}"
       POSTGRES_PORT: "5432"
       POSTGRES_USER: "${POSTGRES_USER}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
@@ -66,3 +68,4 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
 
+restart: unless-stopped
