@@ -187,19 +187,41 @@ class OKXWebSocketClient:
         # TODO: Implement actual resubscribe logic
         # For now, just log - full implementation would require WS connection access
         # The book will be reset and wait for new snapshot
-    
+
+    async def flush_all_handlers(self) -> None:
+        """Сбросить батчи всех обработчиков в хранилище.
+        
+        Метод идемпотентен - повторные вызовы безопасны.
+        Каждый handler.flush() ничего не делает, если батч пуст.
+        """
+        handlers = [
+            ("trades", self.trades_handler),
+            ("orderbook", self.orderbook_handler),
+            ("funding_rate", self.funding_rate_handler),
+            ("mark_price", self.mark_price_handler),
+            ("tickers", self.tickers_handler),
+            ("open_interest", self.open_interest_handler),
+        ]
+        
+        for name, handler in handlers:
+            try:
+                await handler.flush()
+            except Exception as e:
+                log.error(f"Ошибка при сбросе {name} при остановке: {e}")
+
     async def periodic_flush(self) -> None:
         """Периодическая отправка батчей каждые 5 секунд"""
         while True:
             try:
                 await asyncio.sleep(5.0)
-                await self.trades_handler.flush()
-                await self.orderbook_handler.flush()
-                await self.funding_rate_handler.flush()
-                await self.mark_price_handler.flush()
-                await self.tickers_handler.flush()
-                await self.open_interest_handler.flush()
+                await self.flush_all_handlers()
             except asyncio.CancelledError:
+                log.info("Задача periodic_flush отменена, выполняем финальный сброс...")
+                try:
+                    await self.flush_all_handlers()
+                    log.info("Финальный сброс выполнен успешно")
+                except Exception as e:
+                    log.error(f"Ошибка при финальном сбросе: {e}")
                 break
             except Exception as e:
-                log.error(f"Error in periodic flush: {str(e)}")
+                log.error(f"Ошибка в periodic flush: {str(e)}")
