@@ -10,7 +10,7 @@ class TickersHandler:
     def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
-        self.batch_max_size = 200  # Увеличен для производительности
+        self.batch_max_size = 1000
 
     async def on_ticker(self, msg: Dict[str, Any]) -> None:
         """Обработка данных ticker"""
@@ -57,15 +57,18 @@ class TickersHandler:
 
     async def _flush_batch(self) -> None:
         """Отправка батча в хранилище"""
-        if self.batch:
-            if self.storage:
-                try:
-                    await self.storage.write_tickers(self.batch)
-                    self.batch = []
-                except Exception as e:
-                    log.error(f"Error flushing tickers: {str(e)}, batch_size={len(self.batch)}")
-            else:
-                self.batch = []
+        if not self.batch:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch
+        self.batch = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_tickers(batch_to_write)
+            except Exception as e:
+                log.error(f"Error flushing tickers: {str(e)}, batch_size={len(batch_to_write)}")
 
     async def flush(self) -> None:
         """Принудительная отправка оставшихся данных"""

@@ -10,7 +10,7 @@ class FundingRateHandler:
     def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
-        self.batch_max_size = 50  # Батч размер для funding rate
+        self.batch_max_size = 1000
 
     async def on_funding_rate(self, msg: Dict[str, Any]) -> None:
         """Обработка данных funding rate"""
@@ -22,7 +22,6 @@ class FundingRateHandler:
             for rate_data in data:
                 if processed_rate := self._process_funding_rate(rate_data):
                     self.batch.append(processed_rate)
-                    log.info(f"Added funding rate to batch: {processed_rate}")
 
             # Отправляем батч если достигли максимального размера
             if len(self.batch) >= self.batch_max_size:
@@ -52,38 +51,18 @@ class FundingRateHandler:
 
     async def _flush_batch(self) -> None:
         """Отправка батча в хранилище"""
-        if self.batch:
-            if self.storage:
-                try:
-                    await self.storage.write_funding_rates(self.batch)
-                    log.info(
-                        f"Successfully flushed {len(self.batch)} "
-                        f"funding rates to storage"
-                    )
-                    self.batch = []
-                except Exception as e:
-                    # Проверяем, не является ли это "успешным" результатом
-                    if "ClickHouse error writing funding_rates: 0" in str(e):
-                        log.info(
-                            f"Successfully flushed {len(self.batch)} "
-                            f"funding rates to storage (ClickHouse returned 0)"
-                        )
-                        self.batch = []
-                    else:
-                        log.error(
-                            f"Error flushing funding rate batch: {str(e)}, "
-                            f"batch_size={len(self.batch)}"
-                        )
-                        log.error(
-                            f"Batch sample: "
-                            f"{self.batch[:2] if self.batch else 'empty'}"
-                        )
-            else:
-                log.info(
-                    f"No storage available, skipping flush of "
-                    f"{len(self.batch)} funding rates"
-                )
-                self.batch = []
+        if not self.batch:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch
+        self.batch = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_funding_rates(batch_to_write)
+            except Exception as e:
+                log.error(f"Error flushing funding rates: {str(e)}, batch_size={len(batch_to_write)}")
 
     async def flush(self) -> None:
         """Принудительная отправка оставшихся данных"""

@@ -228,33 +228,39 @@ class OrderBookHandler(IOrderBookHandler):
 
     async def _flush_snapshots(self) -> None:
         """Flush snapshots batch to storage"""
-        if self.batch_snapshots:
-            if self.storage:
-                try:
-                    await self.storage.write_orderbook_snapshots(self.batch_snapshots)
-                    self.batch_snapshots = []
-                except Exception as e:
-                    log.error(
-                        f"Error flushing orderbook snapshots: {str(e)}, "
-                        f"batch_size={len(self.batch_snapshots)}"
-                    )
-            else:
-                self.batch_snapshots = []
+        if not self.batch_snapshots:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch_snapshots
+        self.batch_snapshots = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_orderbook_snapshots(batch_to_write)
+            except Exception as e:
+                log.error(
+                    f"Error flushing orderbook snapshots: {str(e)}, "
+                    f"batch_size={len(batch_to_write)}"
+                )
 
     async def _flush_updates(self) -> None:
         """Flush updates batch to storage"""
-        if self.batch_updates:
-            if self.storage:
-                try:
-                    await self.storage.write_orderbook_updates(self.batch_updates)
-                    self.batch_updates = []
-                except Exception as e:
-                    log.error(
-                        f"Error flushing orderbook updates: {str(e)}, "
-                        f"batch_size={len(self.batch_updates)}"
-                    )
-            else:
-                self.batch_updates = []
+        if not self.batch_updates:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch_updates
+        self.batch_updates = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_orderbook_updates(batch_to_write)
+            except Exception as e:
+                log.error(
+                    f"Error flushing orderbook updates: {str(e)}, "
+                    f"batch_size={len(batch_to_write)}"
+                )
 
     async def flush(self) -> None:
         """Force flush all remaining data"""

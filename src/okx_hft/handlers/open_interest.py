@@ -10,7 +10,7 @@ class OpenInterestHandler:
     def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
-        self.batch_max_size = 50
+        self.batch_max_size = 1000
 
     async def on_open_interest(self, msg: Dict[str, Any]) -> None:
         """Обработка данных open interest"""
@@ -48,15 +48,18 @@ class OpenInterestHandler:
 
     async def _flush_batch(self) -> None:
         """Отправка батча в хранилище"""
-        if self.batch:
-            if self.storage:
-                try:
-                    await self.storage.write_open_interest(self.batch)
-                    self.batch = []
-                except Exception as e:
-                    log.error(f"Error flushing open interest: {str(e)}, batch_size={len(self.batch)}")
-            else:
-                self.batch = []
+        if not self.batch:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch
+        self.batch = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_open_interest(batch_to_write)
+            except Exception as e:
+                log.error(f"Error flushing open interest: {str(e)}, batch_size={len(batch_to_write)}")
 
     async def flush(self) -> None:
         """Принудительная отправка оставшихся данных"""
