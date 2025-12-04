@@ -10,7 +10,7 @@ class TickersHandler:
     def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
-        self.batch_max_size = 50
+        self.batch_max_size = 200  # Увеличен для производительности
 
     async def on_ticker(self, msg: Dict[str, Any]) -> None:
         """Обработка данных ticker"""
@@ -22,7 +22,6 @@ class TickersHandler:
             for ticker_data in data:
                 if processed_ticker := self._process_ticker(ticker_data):
                     self.batch.append(processed_ticker)
-                    log.info(f"Added ticker to batch: {processed_ticker}")
 
             # Отправляем батч если достигли максимального размера
             if len(self.batch) >= self.batch_max_size:
@@ -62,33 +61,10 @@ class TickersHandler:
             if self.storage:
                 try:
                     await self.storage.write_tickers(self.batch)
-                    log.info(
-                        f"Successfully flushed {len(self.batch)} "
-                        f"tickers to storage"
-                    )
                     self.batch = []
                 except Exception as e:
-                    # Проверяем, не является ли это "успешным" результатом
-                    if "ClickHouse error writing tickers: 0" in str(e):
-                        log.info(
-                            f"Successfully flushed {len(self.batch)} "
-                            f"tickers to storage (ClickHouse returned 0)"
-                        )
-                        self.batch = []
-                    else:
-                        log.error(
-                            f"Error flushing ticker batch: {str(e)}, "
-                            f"batch_size={len(self.batch)}"
-                        )
-                        log.error(
-                            f"Batch sample: "
-                            f"{self.batch[:2] if self.batch else 'empty'}"
-                        )
+                    log.error(f"Error flushing tickers: {str(e)}, batch_size={len(self.batch)}")
             else:
-                log.info(
-                    f"No storage available, skipping flush of "
-                    f"{len(self.batch)} tickers"
-                )
                 self.batch = []
 
     async def flush(self) -> None:

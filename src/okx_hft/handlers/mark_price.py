@@ -10,7 +10,7 @@ class MarkPriceHandler:
     def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
-        self.batch_max_size = 50  # Батч размер для mark price
+        self.batch_max_size = 200  # Увеличен для производительности
 
     async def on_mark_price(self, msg: Dict[str, Any]) -> None:
         """Обработка данных mark price"""
@@ -22,7 +22,6 @@ class MarkPriceHandler:
             for price_data in data:
                 if processed_price := self._process_mark_price(price_data):
                     self.batch.append(processed_price)
-                    log.info(f"Added mark price to batch: {processed_price}")
 
             # Отправляем батч если достигли максимального размера
             if len(self.batch) >= self.batch_max_size:
@@ -54,33 +53,10 @@ class MarkPriceHandler:
             if self.storage:
                 try:
                     await self.storage.write_mark_prices(self.batch)
-                    log.info(
-                        f"Successfully flushed {len(self.batch)} "
-                        f"mark prices to storage"
-                    )
                     self.batch = []
                 except Exception as e:
-                    # Проверяем, не является ли это "успешным" результатом
-                    if "ClickHouse error writing mark_prices: 0" in str(e):
-                        log.info(
-                            f"Successfully flushed {len(self.batch)} "
-                            f"mark prices to storage (ClickHouse returned 0)"
-                        )
-                        self.batch = []
-                    else:
-                        log.error(
-                            f"Error flushing mark price batch: {str(e)}, "
-                            f"batch_size={len(self.batch)}"
-                        )
-                        log.error(
-                            f"Batch sample: "
-                            f"{self.batch[:2] if self.batch else 'empty'}"
-                        )
+                    log.error(f"Error flushing mark prices: {str(e)}, batch_size={len(self.batch)}")
             else:
-                log.info(
-                    f"No storage available, skipping flush of "
-                    f"{len(self.batch)} mark prices"
-                )
                 self.batch = []
 
     async def flush(self) -> None:

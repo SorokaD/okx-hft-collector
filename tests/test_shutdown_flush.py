@@ -356,3 +356,5 @@ class TestShutdownScenario:
         assert len(client.open_interest_handler.batch) == 0
         assert len(client.orderbook_handler.batch_snapshots) == 0
 
+
+

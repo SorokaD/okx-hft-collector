@@ -22,7 +22,6 @@ class OpenInterestHandler:
             for oi_data in data:
                 if processed_oi := self._process_open_interest(oi_data):
                     self.batch.append(processed_oi)
-                    log.info(f"Added open interest to batch: {processed_oi}")
 
             # Отправляем батч если достигли максимального размера
             if len(self.batch) >= self.batch_max_size:
@@ -53,34 +52,10 @@ class OpenInterestHandler:
             if self.storage:
                 try:
                     await self.storage.write_open_interest(self.batch)
-                    log.info(
-                        f"Successfully flushed {len(self.batch)} "
-                        f"open interest records to storage"
-                    )
                     self.batch = []
                 except Exception as e:
-                    # Проверяем, не является ли это "успешным" результатом
-                    if "ClickHouse error writing open_interest: 0" in str(e):
-                        log.info(
-                            f"Successfully flushed {len(self.batch)} "
-                            f"open interest records to storage "
-                            f"(ClickHouse returned 0)"
-                        )
-                        self.batch = []
-                    else:
-                        log.error(
-                            f"Error flushing open interest batch: {str(e)}, "
-                            f"batch_size={len(self.batch)}"
-                        )
-                        log.error(
-                            f"Batch sample: "
-                            f"{self.batch[:2] if self.batch else 'empty'}"
-                        )
+                    log.error(f"Error flushing open interest: {str(e)}, batch_size={len(self.batch)}")
             else:
-                log.info(
-                    f"No storage available, skipping flush of "
-                    f"{len(self.batch)} open interest records"
-                )
                 self.batch = []
 
     async def flush(self) -> None:

@@ -235,7 +235,6 @@ class PostgreSQLStorage(IStorage):
         if not batch:
             return
         try:
-            log.info(f"Inserting {len(batch)} trades to PostgreSQL")
             async with self.pool.acquire() as conn:
                 await conn.execute(f'SET search_path TO "{self.schema}"')
                 await conn.executemany(
@@ -258,7 +257,6 @@ class PostgreSQLStorage(IStorage):
                         for trade in batch
                     ],
                 )
-            log.info(f"Successfully inserted {len(batch)} trades")
         except Exception as e:
             log.error(f"PostgreSQL insert error: {str(e)}")
             raise Exception(f"PostgreSQL error writing trades: {str(e)}")
@@ -267,7 +265,6 @@ class PostgreSQLStorage(IStorage):
         if not batch:
             return
         try:
-            log.info(f"Inserting {len(batch)} funding rates to PostgreSQL")
             async with self.pool.acquire() as conn:
                 await conn.execute(f'SET search_path TO "{self.schema}"')
                 await conn.executemany(
@@ -289,7 +286,6 @@ class PostgreSQLStorage(IStorage):
                         for rate in batch
                     ],
                 )
-            log.info(f"Successfully inserted {len(batch)} funding rates")
         except Exception as e:
             log.error(f"PostgreSQL insert error: {str(e)}")
             raise Exception(f"PostgreSQL error writing funding_rates: {str(e)}")
@@ -298,7 +294,6 @@ class PostgreSQLStorage(IStorage):
         if not batch:
             return
         try:
-            log.info(f"Inserting {len(batch)} mark prices to PostgreSQL")
             async with self.pool.acquire() as conn:
                 await conn.execute(f'SET search_path TO "{self.schema}"')
                 await conn.executemany(
@@ -320,7 +315,6 @@ class PostgreSQLStorage(IStorage):
                         for price in batch
                     ],
                 )
-            log.info(f"Successfully inserted {len(batch)} mark prices")
         except Exception as e:
             log.error(f"PostgreSQL insert error: {str(e)}")
             raise Exception(f"PostgreSQL error writing mark_prices: {str(e)}")
@@ -329,7 +323,6 @@ class PostgreSQLStorage(IStorage):
         if not batch:
             return
         try:
-            log.info(f"Inserting {len(batch)} tickers to PostgreSQL")
             async with self.pool.acquire() as conn:
                 await conn.execute(f'SET search_path TO "{self.schema}"')
                 await conn.executemany(
@@ -360,7 +353,6 @@ class PostgreSQLStorage(IStorage):
                         for ticker in batch
                     ],
                 )
-            log.info(f"Successfully inserted {len(batch)} tickers")
         except Exception as e:
             log.error(f"PostgreSQL insert error: {str(e)}")
             raise Exception(f"PostgreSQL error writing tickers: {str(e)}")
@@ -369,7 +361,6 @@ class PostgreSQLStorage(IStorage):
         if not batch:
             return
         try:
-            log.info(f"Inserting {len(batch)} open interest records to PostgreSQL")
             async with self.pool.acquire() as conn:
                 await conn.execute(f'SET search_path TO "{self.schema}"')
                 await conn.executemany(
@@ -390,7 +381,6 @@ class PostgreSQLStorage(IStorage):
                         for oi in batch
                     ],
                 )
-            log.info(f"Successfully inserted {len(batch)} open interest records")
         except Exception as e:
             log.error(f"PostgreSQL insert error: {str(e)}")
             raise Exception(f"PostgreSQL error writing open_interest: {str(e)}")
@@ -405,15 +395,9 @@ class PostgreSQLStorage(IStorage):
         log = get_logger(__name__)
         
         if not batch:
-            log.warning("write_orderbook_snapshots called with empty batch")
             return
         
         try:
-            log.info(
-                f"=== write_orderbook_snapshots CALLED === "
-                f"Inserting {len(batch)} orderbook snapshot rows to PostgreSQL"
-            )
-            
             async with self.pool.acquire() as conn:
                 await conn.execute(f'SET search_path TO "{self.schema}"')
                 await conn.executemany(
@@ -436,10 +420,6 @@ class PostgreSQLStorage(IStorage):
                         for row in batch
                     ],
                 )
-            log.info(
-                f"Inserted {len(batch)} orderbook snapshot rows to PostgreSQL"
-            )
-                    
         except Exception as e:
             log.error(
                 f"PostgreSQL insert error for orderbook_snapshots: {str(e)}"
@@ -454,10 +434,6 @@ class PostgreSQLStorage(IStorage):
             return
         try:
             import orjson
-            from okx_hft.utils.logging import get_logger
-            
-            log = get_logger(__name__)
-            log.info(f"Inserting {len(batch)} orderbook updates to PostgreSQL")
             
             async with self.pool.acquire() as conn:
                 await conn.execute(f'SET search_path TO "{self.schema}"')
@@ -479,8 +455,6 @@ class PostgreSQLStorage(IStorage):
                         for update in batch
                     ],
                 )
-            log.info(f"Inserted {len(batch)} orderbook updates to PostgreSQL")
-                    
         except Exception as e:
             log.error(f"PostgreSQL insert error for orderbook_updates: {str(e)}")
             raise Exception(f"PostgreSQL error writing orderbook_updates: {str(e)}")

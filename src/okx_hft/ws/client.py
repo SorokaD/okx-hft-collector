@@ -143,23 +143,11 @@ class OKXWebSocketClient:
         if channel and inst:
             events_total.labels(channel=channel, instId=inst).inc()
             
-            # Логируем входящие сообщения для отладки
-            log.info(
-                f"Received message: channel={channel}, inst={inst}, "
-                f"data_count={len(data.get('data', []))}"
-            )
-            
             # Маршрутизация сообщений по каналам
             if channel == "trades":
                 await self.trades_handler.on_trade(data)
             elif channel in ("books", "books-l2-tbt", "books50-l2-tbt", "books5"):
-                # Логируем входящие данные orderbook для отладки
                 action = data.get("action", "snapshot")
-                log.info(
-                    f"Received orderbook message: channel={channel}, "
-                    f"inst={inst}, action={action}, "
-                    f"data_count={len(data.get('data', []))}"
-                )
                 # Проверяем тип сообщения: snapshot или update
                 if action == "snapshot":
                     await self.orderbook_handler.on_snapshot(data)
