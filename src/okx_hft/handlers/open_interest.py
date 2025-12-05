@@ -10,7 +10,7 @@ class OpenInterestHandler:
     def __init__(self, storage: IStorage = None) -> None:
         self.storage = storage
         self.batch: List[Dict[str, Any]] = []
-        self.batch_max_size = 50
+        self.batch_max_size = 1000
 
     async def on_open_interest(self, msg: Dict[str, Any]) -> None:
         """Обработка данных open interest"""
@@ -22,7 +22,6 @@ class OpenInterestHandler:
             for oi_data in data:
                 if processed_oi := self._process_open_interest(oi_data):
                     self.batch.append(processed_oi)
-                    log.info(f"Added open interest to batch: {processed_oi}")
 
             # Отправляем батч если достигли максимального размера
             if len(self.batch) >= self.batch_max_size:
@@ -49,39 +48,18 @@ class OpenInterestHandler:
 
     async def _flush_batch(self) -> None:
         """Отправка батча в хранилище"""
-        if self.batch:
-            if self.storage:
-                try:
-                    await self.storage.write_open_interest(self.batch)
-                    log.info(
-                        f"Successfully flushed {len(self.batch)} "
-                        f"open interest records to storage"
-                    )
-                    self.batch = []
-                except Exception as e:
-                    # Проверяем, не является ли это "успешным" результатом
-                    if "ClickHouse error writing open_interest: 0" in str(e):
-                        log.info(
-                            f"Successfully flushed {len(self.batch)} "
-                            f"open interest records to storage "
-                            f"(ClickHouse returned 0)"
-                        )
-                        self.batch = []
-                    else:
-                        log.error(
-                            f"Error flushing open interest batch: {str(e)}, "
-                            f"batch_size={len(self.batch)}"
-                        )
-                        log.error(
-                            f"Batch sample: "
-                            f"{self.batch[:2] if self.batch else 'empty'}"
-                        )
-            else:
-                log.info(
-                    f"No storage available, skipping flush of "
-                    f"{len(self.batch)} open interest records"
-                )
-                self.batch = []
+        if not self.batch:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch
+        self.batch = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_open_interest(batch_to_write)
+            except Exception as e:
+                log.error(f"Error flushing open interest: {str(e)}, batch_size={len(batch_to_write)}")
 
     async def flush(self) -> None:
         """Принудительная отправка оставшихся данных"""

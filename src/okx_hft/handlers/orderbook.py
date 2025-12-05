@@ -46,11 +46,6 @@ class OrderBookHandler(IOrderBookHandler):
             inst_id = arg.get("instId", "")
             data = msg.get("data", [])
 
-            log.info(
-                f"on_snapshot called: inst_id={inst_id}, "
-                f"data_len={len(data)}"
-            )
-
             if not data:
                 log.warning(f"No data in snapshot message for {inst_id}")
                 return
@@ -80,10 +75,6 @@ class OrderBookHandler(IOrderBookHandler):
                     )
                     if rows:
                         self.batch_snapshots.extend(rows)
-                        log.info(
-                            f"Added OKX snapshot rows: {inst_id}, "
-                            f"snapshot_id={snapshot_id}, rows={len(rows)}"
-                        )
                 else:
                     log.warning(
                         f"Failed to apply snapshot to OrderBookL2: {inst_id}"
@@ -104,11 +95,6 @@ class OrderBookHandler(IOrderBookHandler):
             arg = msg.get("arg", {})
             inst_id = arg.get("instId", "")
             data = msg.get("data", [])
-
-            log.info(
-                f"on_increment called: inst_id={inst_id}, "
-                f"data_len={len(data)}"
-            )
 
             if not data:
                 log.warning(f"No data in update message for {inst_id}")
@@ -235,10 +221,6 @@ class OrderBookHandler(IOrderBookHandler):
         
         if rows:
             self.batch_snapshots.extend(rows)
-            log.info(
-                f"Generated snapshot for {inst_id}: "
-                f"snapshot_id={snapshot_id}, rows={len(rows)}"
-            )
             
             # Flush if batch is full
             if len(self.batch_snapshots) >= self.batch_max_size:
@@ -246,60 +228,39 @@ class OrderBookHandler(IOrderBookHandler):
 
     async def _flush_snapshots(self) -> None:
         """Flush snapshots batch to storage"""
-        log.info(
-            f"_flush_snapshots called: batch_size={len(self.batch_snapshots)}, "
-            f"has_storage={self.storage is not None}"
-        )
-        if self.batch_snapshots:
-            if self.storage:
-                try:
-                    log.info(
-                        f"Calling storage.write_orderbook_snapshots with "
-                        f"{len(self.batch_snapshots)} rows"
-                    )
-                    await self.storage.write_orderbook_snapshots(self.batch_snapshots)
-                    log.info(
-                        f"Successfully flushed {len(self.batch_snapshots)} "
-                        f"orderbook snapshot rows to storage"
-                    )
-                    self.batch_snapshots = []
-                except Exception as e:
-                    log.error(
-                        f"Error flushing orderbook snapshots batch: {str(e)}, "
-                        f"batch_size={len(self.batch_snapshots)}",
-                        exc_info=True
-                    )
-            else:
-                log.warning(
-                    f"No storage available, skipping flush of "
-                    f"{len(self.batch_snapshots)} orderbook snapshot rows"
+        if not self.batch_snapshots:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch_snapshots
+        self.batch_snapshots = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_orderbook_snapshots(batch_to_write)
+            except Exception as e:
+                log.error(
+                    f"Error flushing orderbook snapshots: {str(e)}, "
+                    f"batch_size={len(batch_to_write)}"
                 )
-                self.batch_snapshots = []
-        else:
-            log.debug("_flush_snapshots called but batch_snapshots is empty")
 
     async def _flush_updates(self) -> None:
         """Flush updates batch to storage"""
-        if self.batch_updates:
-            if self.storage:
-                try:
-                    await self.storage.write_orderbook_updates(self.batch_updates)
-                    log.info(
-                        f"Successfully flushed {len(self.batch_updates)} "
-                        f"orderbook updates to storage"
-                    )
-                    self.batch_updates = []
-                except Exception as e:
-                    log.error(
-                        f"Error flushing orderbook updates batch: {str(e)}, "
-                        f"batch_size={len(self.batch_updates)}"
-                    )
-            else:
-                log.info(
-                    f"No storage available, skipping flush of "
-                    f"{len(self.batch_updates)} orderbook updates"
+        if not self.batch_updates:
+            return
+        
+        # Атомарно забираем батч — новые данные пойдут в новый список
+        batch_to_write = self.batch_updates
+        self.batch_updates = []
+        
+        if self.storage:
+            try:
+                await self.storage.write_orderbook_updates(batch_to_write)
+            except Exception as e:
+                log.error(
+                    f"Error flushing orderbook updates: {str(e)}, "
+                    f"batch_size={len(batch_to_write)}"
                 )
-                self.batch_updates = []
 
     async def flush(self) -> None:
         """Force flush all remaining data"""
@@ -352,39 +313,12 @@ class OrderBookHandler(IOrderBookHandler):
                         self.batch_snapshots.extend(rows)
                         generated_count += 1
                         total_rows += len(rows)
-                        log.info(
-                            f"Generated periodic snapshot for {inst_id}: "
-                            f"snapshot_id={snapshot_id}, rows={len(rows)}"
-                        )
                 
-                if generated_count > 0:
-                    log.info(
-                        f"Periodic snapshot iteration #{iteration}: "
-                        f"generated {generated_count} snapshots, "
-                        f"{total_rows} total rows, "
-                        f"batch_size={len(self.batch_snapshots)}"
-                    )
-                
-                # Flush if batch is full
+                # Flush if batch is full or we generated new snapshots
                 if len(self.batch_snapshots) >= self.batch_max_size:
-                    log.info(
-                        f"Batch full ({len(self.batch_snapshots)}), "
-                        f"flushing snapshots"
-                    )
                     await self._flush_snapshots()
                 elif len(self.batch_snapshots) > 0 and generated_count > 0:
-                    # Flush if we generated new snapshots in this iteration
-                    log.info(
-                        f"Flushing {len(self.batch_snapshots)} snapshot rows "
-                        f"({generated_count} newly generated)"
-                    )
                     await self._flush_snapshots()
-                elif len(self.batch_snapshots) > 0:
-                    # Log if we have pending snapshots but didn't generate new ones
-                    log.debug(
-                        f"Have {len(self.batch_snapshots)} pending snapshot rows "
-                        f"(will be flushed by periodic flush or when batch is full)"
-                    )
                     
             except asyncio.CancelledError:
                 break
