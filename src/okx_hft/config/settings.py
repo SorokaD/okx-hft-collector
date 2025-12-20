@@ -7,9 +7,16 @@ from typing import List
 class Settings(BaseSettings):
     INSTRUMENTS: List[str] = Field(
         default_factory=lambda: [
- 
             "BTC-USDT-SWAP",
             "ETH-USDT-SWAP",
+        ]
+    )
+    # Index instruments for index-tickers channel (derived from INSTRUMENTS)
+    # BTC-USDT-SWAP -> BTC-USDT, ETH-USDT-SWAP -> ETH-USDT
+    INDEX_INSTRUMENTS: List[str] = Field(
+        default_factory=lambda: [
+            "BTC-USDT",
+            "ETH-USDT",
         ]
     )
     CHANNELS: List[str] = Field(
@@ -20,6 +27,12 @@ class Settings(BaseSettings):
             "tickers",
             "open-interest",
             "books",
+        ]
+    )
+    # Channels that use INDEX_INSTRUMENTS instead of INSTRUMENTS
+    INDEX_CHANNELS: List[str] = Field(
+        default_factory=lambda: [
+            "index-tickers",
         ]
     )
     OKX_WS_URL: str = "wss://ws.okx.com:8443/ws/v5/public"

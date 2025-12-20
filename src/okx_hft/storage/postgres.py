@@ -230,6 +230,27 @@ class PostgreSQLStorage(IStorage):
                 ON "{self.schema}".orderbook_updates(instid, ts_event_ms)
             """)
             log.info(f"Created/verified table {self.schema}.orderbook_updates")
+            
+            # Create index_tickers table
+            await conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS "{self.schema}".index_tickers (
+                    instid VARCHAR(50) NOT NULL,
+                    idxpx DOUBLE PRECISION NOT NULL,
+                    open24h DOUBLE PRECISION,
+                    high24h DOUBLE PRECISION,
+                    low24h DOUBLE PRECISION,
+                    sodutc0 DOUBLE PRECISION,
+                    sodutc8 DOUBLE PRECISION,
+                    ts_event_ms BIGINT NOT NULL,
+                    ts_ingest_ms BIGINT NOT NULL,
+                    PRIMARY KEY (instid, ts_event_ms)
+                )
+            """)
+            await conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_index_tickers_instid_ts 
+                ON "{self.schema}".index_tickers(instid, ts_event_ms)
+            """)
+            log.info(f"Created/verified table {self.schema}.index_tickers")
 
     async def write_trades(self, batch: Sequence[Dict[str, Any]]) -> None:
         if not batch:
@@ -427,6 +448,38 @@ class PostgreSQLStorage(IStorage):
             raise Exception(
                 f"PostgreSQL error writing orderbook_snapshots: {str(e)}"
             )
+
+    async def write_index_tickers(self, batch: Sequence[Dict[str, Any]]) -> None:
+        if not batch:
+            return
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(f'SET search_path TO "{self.schema}"')
+                await conn.executemany(
+                    f"""
+                    INSERT INTO "{self.schema}".index_tickers 
+                    (instid, idxpx, open24h, high24h, low24h, sodutc0, sodutc8, ts_event_ms, ts_ingest_ms)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT (instid, ts_event_ms) DO NOTHING
+                    """,
+                    [
+                        (
+                            ticker["instId"],
+                            ticker["idxPx"],
+                            ticker["open24h"],
+                            ticker["high24h"],
+                            ticker["low24h"],
+                            ticker["sodUtc0"],
+                            ticker["sodUtc8"],
+                            ticker["ts_event_ms"],
+                            ticker["ts_ingest_ms"],
+                        )
+                        for ticker in batch
+                    ],
+                )
+        except Exception as e:
+            log.error(f"PostgreSQL insert error: {str(e)}")
+            raise Exception(f"PostgreSQL error writing index_tickers: {str(e)}")
 
     async def write_orderbook_updates(self, batch: Sequence[Dict[str, Any]]) -> None:
         """Write orderbook updates using JSONB for nested types"""

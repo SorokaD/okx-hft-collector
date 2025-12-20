@@ -51,15 +51,15 @@ groups:
           summary: "OKX Collector is down"
           description: "OKX Collector service is not responding"
 
-      # Алерт на недоступность ClickHouse
-      - alert: ClickHouseDown
-        expr: up{job="clickhouse"} == 0
-        for: 30s     # Увеличил до 30 секунд
+      # Алерт на недоступность PostgreSQL/TimescaleDB
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 30s
         labels:
           severity: critical
         annotations:
-          summary: "ClickHouse is down"
-          description: "ClickHouse service is not responding"
+          summary: "PostgreSQL/TimescaleDB is down"
+          description: "PostgreSQL/TimescaleDB service is not responding"
 
       # Алерт на низкую частоту событий
       - alert: LowEventRate

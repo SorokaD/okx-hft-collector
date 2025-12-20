@@ -1,20 +1,16 @@
 # OKX HFT Collector  
-upd 23.10.25 Все работает в связке с infra, настроены алерты в tg при падении collector  
-upd 25.10.25 Все работает, в clickhouse собираются 3 таблицы   
-upd 28.10.25 Все работает, в clickhouse собираются 5 таблиц, работают alerts (тормоз), нет конфликта с портами okx_hft_infra  
-upd 01.11.25 Все работает, в clickhouse собираются 7 таблиц, alerts поправил  
-upd 03.11.25 Все работает, в clickhouse собираются 7 корректные таблиц  
 
-TODO: Настроить grafana на метрики работы сервиса
+upd 20.12.24 Миграция на PostgreSQL/TimescaleDB, удалён ClickHouse
+upd 20.12.24 Добавлен канал index-tickers для сбора index price
 
 Высокочастотный коллектор данных с биржи OKX для сбора торговых данных и стаканов заявок в реальном времени.
 
 ## 🚀 Возможности
 
 - **WebSocket подключение** к OKX для получения данных в реальном времени
-- **Сбор торговых данных** (trades, funding-rate, mark-price, tickers, open-interest)
+- **Сбор торговых данных** (trades, funding-rate, mark-price, tickers, open-interest, index-tickers)
 - **Сбор данных стакана заявок** (orderbook) 
-- **Хранение в ClickHouse** с оптимизированной структурой
+- **Хранение в PostgreSQL/TimescaleDB** с оптимизированной структурой
 - **Мониторинг и алерты** через Prometheus + Alertmanager
 - **Метрики производительности** в реальном времени
 - **Батчинг данных** для оптимизации производительности
@@ -23,9 +19,9 @@ TODO: Настроить grafana на метрики работы сервиса
 ## 📊 Архитектура
 
 ```
-OKX WebSocket → Collector → ClickHouse
+OKX WebSocket → Collector → PostgreSQL/TimescaleDB (167.86.110.201)
                      ↓
-              Prometheus → Alertmanager → Уведомления
+              Prometheus → Alertmanager → Telegram
 ```
 
 ## 🛠 Установка и запуск
@@ -33,7 +29,7 @@ OKX WebSocket → Collector → ClickHouse
 ### Требования
 
 - Docker и Docker Compose
-- 8+ GB свободного места на диске
+- PostgreSQL/TimescaleDB (внешний сервер)
 - 4+ GB RAM
 
 ### Быстрый старт
@@ -44,23 +40,29 @@ git clone <repository-url>
 cd okx-hft-collector
 ```
 
-2. **Запустите систему:**
+2. **Настройте переменные окружения:**
 ```bash
 cd docker
-docker-compose up -d
+cp .env.example .env
+# Отредактируйте .env файл
 ```
 
-3. **Проверьте статус:**
+3. **Запустите систему:**
+```bash
+docker-compose up -d --build
+```
+
+4. **Проверьте статус:**
 ```bash
 docker-compose ps
+docker-compose logs -f collector
 ```
 
 ### Компоненты системы
 
 | Сервис | Порт | Описание |
 |--------|------|----------|
-| ClickHouse | 8123, 9000 | База данных для хранения рыночных данных |
-| Collector | 9108 | Основной сервис сбора данных |
+| Collector | 9108 | Основной сервис сбора данных + /metrics |
 | Prometheus | 9104 | Сбор и хранение метрик |
 | Alertmanager | 9095 | Обработка и отправка алертов |
 
@@ -71,22 +73,18 @@ docker-compose ps
 - **Prometheus**: http://localhost:9104
 - **Alertmanager**: http://localhost:9095  
 - **Метрики коллектора**: http://localhost:9108/metrics
-- **ClickHouse**: http://localhost:8123
 
 ### Ключевые метрики
 
 ```prometheus
 # Количество событий по каналам
-events_total{channel="trades",instId="BTC-USDT"}
+events_total{channel="trades",instId="BTC-USDT-SWAP"}
 
 # Переподключения WebSocket
 reconnects_total
 
 # Задержка event loop
 event_loop_lag_ms
-
-# Количество записей в ClickHouse
-SELECT COUNT(*) FROM okx_raw.trades
 ```
 
 ### Полезные запросы Prometheus
@@ -108,149 +106,56 @@ event_loop_lag_ms
 
 | Алерт | Условие | Серьезность | Описание |
 |-------|---------|-------------|----------|
-| WebSocketConnectionDown | `increase(reconnects_total[5m]) > 0` | Critical | Разрыв соединения с OKX |
-| NoDataReceived | `rate(events_total[5m]) == 0` | Critical | Отсутствие данных от OKX |
-| HighEventLoopLag | `event_loop_lag_ms > 100` | Warning | Высокая задержка обработки |
-| DataInsertionErrors | `increase(events_total{channel="unknown"}[5m]) > 10` | Warning | Ошибки вставки данных |
+| WebSocketConnectionDown | `increase(reconnects_total[1m]) > 0` | Critical | Переподключение к OKX |
+| NoDataReceived | `rate(events_total[1m]) == 0` | Critical | Отсутствие данных от OKX |
+| HighEventLoopLag | `event_loop_lag_ms > 50` | Warning | Высокая задержка обработки |
 | CollectorDown | `up{job="okx-collector"} == 0` | Critical | Коллектор недоступен |
-| ClickHouseDown | `up{job="clickhouse"} == 0` | Critical | ClickHouse недоступен |
+| PostgreSQLDown | `pg_up == 0` | Critical | PostgreSQL недоступен |
 
-### Настройка уведомлений
-
-#### Telegram (рекомендуется)
+### Настройка Telegram уведомлений
 
 1. Создайте бота через @BotFather в Telegram
 2. Получите токен бота и chat ID
-3. Создайте файл `.env` в папке `docker/`:
+3. Добавьте в `.env`:
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 ```
 
-4. Запустите webhook для уведомлений:
-```bash
-docker-compose up -d alert-webhook
-```
+## 📊 Структура данных (PostgreSQL)
 
-#### Email уведомления
+### Таблицы
 
-Отредактируйте `docker/alertmanager.yml`:
-```yaml
-receivers:
-  - name: 'email-alerts'
-    email_configs:
-      - to: 'admin@example.com'
-        subject: 'OKX Collector Alert'
-        smtp_config:
-          smarthost: 'smtp.gmail.com:587'
-          auth_username: 'your_email@gmail.com'
-          auth_password: 'your_app_password'
-```
+| Таблица | Описание |
+|---------|----------|
+| `okx_raw.trades` | Сделки |
+| `okx_raw.funding_rates` | Ставки финансирования |
+| `okx_raw.mark_prices` | Mark price |
+| `okx_raw.tickers` | Тикеры (bid/ask, volume) |
+| `okx_raw.open_interest` | Открытый интерес |
+| `okx_raw.index_tickers` | Index price (BTC-USDT, ETH-USDT) |
+| `okx_raw.orderbook_snapshots` | Снапшоты стакана |
+| `okx_raw.orderbook_updates` | Инкрементальные обновления стакана |
 
-## 📊 Структура данных
-
-### Таблица trades
+### Пример запросов
 
 ```sql
-CREATE TABLE okx_raw.trades (
-    instId String,           -- Инструмент (BTC-USDT, ETH-USDT)
-    ts_event_ms UInt64,      -- Время события от OKX (миллисекунды)
-    tradeId String,          -- ID сделки
-    px Float64,              -- Цена
-    sz Float64,              -- Размер
-    side String,             -- Сторона (buy/sell)
-    ts_ingest_ms UInt64      -- Время получения данных (миллисекунды)
-) ENGINE = MergeTree()
-ORDER BY (instId, ts_event_ms, tradeId)
-```
+-- Последние сделки
+SELECT * FROM okx_raw.trades 
+WHERE instid = 'BTC-USDT-SWAP' 
+ORDER BY ts_event_ms DESC LIMIT 10;
 
-### Таблицы Order Book (Level-2, Depth 50, Tick-by-Tick)
+-- Index price
+SELECT * FROM okx_raw.index_tickers 
+WHERE instid = 'BTC-USDT' 
+ORDER BY ts_event_ms DESC LIMIT 10;
 
-Система собирает данные стакана заявок через канал `books` от OKX и сохраняет их в две отдельные таблицы:
-
-#### orderbook_snapshots
-
-Содержит полные снапшоты стакана (топ-50 уровней) на момент события:
-
-```sql
-CREATE TABLE IF NOT EXISTS okx_raw.orderbook_snapshots (
-    instId String,           -- Instrument ID (e.g., BTC-USDT-SWAP)
-    ts_event_ms UInt64,      -- Event timestamp from OKX (milliseconds)
-    ts_event DateTime64(3) ALIAS toDateTime64(ts_event_ms/1000, 3),
-    ts_ingest_ms UInt64,      -- Ingestion timestamp (local, milliseconds)
-    ts_ingest DateTime64(3) ALIAS toDateTime64(ts_ingest_ms/1000, 3),
-    bids Nested (             -- Top 50 bid levels
-        price Decimal(20,8),
-        size  Decimal(20,8)
-    ),
-    asks Nested (             -- Top 50 ask levels
-        price Decimal(20,8),
-        size  Decimal(20,8)
-    ),
-    checksum Int64            -- OKX checksum for validation
-)
-ENGINE = MergeTree()
-ORDER BY (instId, ts_event_ms)
-TTL ts_event + toIntervalDay(7)
-SETTINGS index_granularity = 8192;
-```
-
-#### orderbook_updates
-
-Содержит инкрементальные обновления (только измененные уровни):
-
-```sql
-CREATE TABLE IF NOT EXISTS okx_raw.orderbook_updates (
-    instId String,           -- Instrument ID (e.g., BTC-USDT-SWAP)
-    ts_event_ms UInt64,      -- Event timestamp from OKX (milliseconds)
-    ts_event DateTime64(3) ALIAS toDateTime64(ts_event_ms/1000, 3),
-    ts_ingest_ms UInt64,      -- Ingestion timestamp (local, milliseconds)
-    ts_ingest DateTime64(3) ALIAS toDateTime64(ts_ingest_ms/1000, 3),
-    bids_delta Nested (       -- Changed bid levels (size=0 means remove level)
-        price Decimal(20,8),
-        size  Decimal(20,8)
-    ),
-    asks_delta Nested (       -- Changed ask levels (size=0 means remove level)
-        price Decimal(20,8),
-        size  Decimal(20,8)
-    ),
-    checksum Int64            -- OKX checksum for validation
-)
-ENGINE = MergeTree()
-ORDER BY (instId, ts_event_ms)
-TTL ts_event + toIntervalDay(7)
-SETTINGS index_granularity = 8192;
-```
-
-**Важные замечания:**
-- `*_delta` содержат только измененные уровни (size=0 означает удаление уровня)
-- `*_snapshots` содержат полный топ-50 на момент события
-- Данные автоматически флушатся при достижении размера батча (50 записей) или каждые 5 секунд
-
-#### Примеры запросов
-
-```sql
--- Последний снапшот
-SELECT * FROM okx_raw.orderbook_snapshots
-WHERE instId='BTC-USDT-SWAP'
-ORDER BY ts_event_ms DESC LIMIT 1;
-
--- Построить midprice из снапшота
-SELECT 
-    instId, 
-    ts_event, 
-    (arrayElement(asks.price, 1) + arrayElement(bids.price, 1)) / 2 AS mid
-FROM okx_raw.orderbook_snapshots
-ORDER BY ts_event DESC LIMIT 100;
-
--- Восстановить best bid/ask за время из обновлений
-SELECT
-    instId, 
-    ts_event,
-    arrayElement(bids_delta.price, 1) AS best_bid_price_delta,
-    arrayElement(asks_delta.price, 1) AS best_ask_price_delta
-FROM okx_raw.orderbook_updates
-ORDER BY ts_event DESC LIMIT 100;
+-- Количество записей по таблицам
+SELECT 'trades' as table_name, COUNT(*) FROM okx_raw.trades
+UNION ALL
+SELECT 'tickers', COUNT(*) FROM okx_raw.tickers
+UNION ALL
+SELECT 'index_tickers', COUNT(*) FROM okx_raw.index_tickers;
 ```
 
 ## ⚙️ Конфигурация
@@ -261,54 +166,19 @@ ORDER BY ts_event DESC LIMIT 100;
 |------------|--------------|----------|
 | `INSTRUMENTS` | `["BTC-USDT-SWAP","ETH-USDT-SWAP"]` | Список инструментов |
 | `CHANNELS` | `["trades","funding-rate","mark-price","tickers","open-interest","books"]` | Каналы данных |
+| `INDEX_INSTRUMENTS` | `["BTC-USDT","ETH-USDT"]` | Инструменты для index-tickers |
+| `INDEX_CHANNELS` | `["index-tickers"]` | Каналы для индексных цен |
 | `OKX_WS_URL` | `wss://ws.okx.com:8443/ws/v5/public` | URL WebSocket OKX |
-| `CLICKHOUSE_DSN` | `http://localhost:8123` | DSN ClickHouse |
-| `CLICKHOUSE_DB` | `okx_raw` | База данных ClickHouse |
-| `BATCH_MAX_SIZE` | `200` | Максимальный размер батча |
-| `FLUSH_INTERVAL_MS` | `100` | Интервал принудительной отправки (мс) |
+| `POSTGRES_HOST` | `localhost` | Хост PostgreSQL |
+| `POSTGRES_PORT` | `5432` | Порт PostgreSQL |
+| `POSTGRES_USER` | - | Пользователь PostgreSQL |
+| `POSTGRES_PASSWORD` | - | Пароль PostgreSQL |
+| `POSTGRES_DB` | `okx_hft` | База данных |
+| `POSTGRES_SCHEMA` | `okx_raw` | Схема |
+| `BATCH_MAX_SIZE` | `5000` | Максимальный размер батча |
+| `FLUSH_INTERVAL_MS` | `150` | Интервал принудительной отправки (мс) |
 | `METRICS_PORT` | `9108` | Порт для метрик |
 | `LOG_LEVEL` | `INFO` | Уровень логирования |
-
-### Настройка производительности
-
-#### Увеличение пропускной способности
-
-```yaml
-# В docker-compose.yml
-environment:
-  BATCH_MAX_SIZE: "5000"       # Больше записей в батче
-  FLUSH_INTERVAL_MS: "50"      # Чаще отправка
-```
-
-#### Уменьшение нагрузки
-
-```yaml
-# Сбор только торговых данных
-CHANNELS: '["trades"]'
-
-# Меньше инструментов
-INSTRUMENTS: '["BTC-USDT"]'
-```
-
-**Примечания:**
-- Канал `books` включен по умолчанию и собирает данные orderbook (level-2, depth 50)
-- Используются две таблицы: `orderbook_snapshots` (полные снапшоты) и `orderbook_updates` (инкременты)
-- TTL установлен на 7 дней для таблиц orderbook
-- Данные автоматически флушатся при достижении размера батча или каждые 5 секунд через периодический flush
-
-## 📊 Объем данных
-
-### Ожидаемый объем данных
-
-| Тип данных | Таблица | TTL |
-|------------|---------|-----|
-| Trades | `okx_raw.trades` | Без ограничений |
-| Funding Rates | `okx_raw.funding_rates` | Без ограничений |
-| Mark Prices | `okx_raw.mark_prices` | Без ограничений |
-| Tickers | `okx_raw.tickers` | Без ограничений |
-| Open Interest | `okx_raw.open_interest` | Без ограничений |
-| Orderbook Snapshots | `okx_raw.orderbook_snapshots` | 7 дней |
-| Orderbook Updates | `okx_raw.orderbook_updates` | 7 дней |
 
 ## 🔧 Управление системой
 
@@ -316,7 +186,7 @@ INSTRUMENTS: '["BTC-USDT"]'
 
 ```bash
 # Запуск всех сервисов
-docker-compose up -d
+docker-compose up -d --build
 
 # Остановка всех сервисов  
 docker-compose down
@@ -334,71 +204,11 @@ docker-compose ps
 ### Проверка здоровья системы
 
 ```bash
-# Проверка ClickHouse
-curl "http://localhost:8123/?query=SELECT%20version()"
-
 # Проверка метрик коллектора
 curl "http://localhost:9108/metrics"
 
-# Количество записей в базе
-curl "http://localhost:8123/?query=SELECT%20COUNT(*)%20FROM%20okx_raw.trades"
-```
-
-### Очистка данных
-
-```bash
-# Остановка системы
-docker-compose down
-
-# Удаление данных ClickHouse
-docker volume rm docker_ch-data
-
-# Перезапуск
-docker-compose up -d
-```
-
-## 🐛 Устранение неполадок
-
-### Проблемы с подключением
-
-1. **Коллектор не подключается к ClickHouse:**
-```bash
-# Проверьте логи
-docker-compose logs collector
-
-# Проверьте статус ClickHouse
-curl "http://localhost:8123/?query=SELECT%20version()"
-```
-
-2. **Нет данных в ClickHouse:**
-```bash
-# Проверьте логи коллектора
-docker-compose logs --tail=50 collector
-
-# Проверьте метрики
-curl "http://localhost:9108/metrics" | grep events_total
-```
-
-### Проблемы с производительностью
-
-1. **Высокая задержка event loop:**
-   - Увеличьте `BATCH_MAX_SIZE`
-   - Уменьшите `FLUSH_INTERVAL_MS`
-   - Отключите канал orderbook
-
-2. **Много переподключений:**
-   - Проверьте стабильность интернет-соединения
-   - Увеличьте таймауты в коде
-
-### Проблемы с алертами
-
-1. **Алерты не приходят:**
-```bash
-# Проверьте статус Alertmanager
-curl "http://localhost:9095/api/v2/status"
-
-# Проверьте правила в Prometheus
-# Перейдите в http://localhost:9104/alerts
+# Проверка PostgreSQL
+psql -h 167.86.110.201 -U postgres -d okx_hft -c "SELECT COUNT(*) FROM okx_raw.trades;"
 ```
 
 ## 📝 Логирование
@@ -413,13 +223,6 @@ curl "http://localhost:9095/api/v2/status"
 ### Просмотр логов
 
 ```bash
-# Все логи
-docker-compose logs
-
-# Логи конкретного сервиса
-docker-compose logs collector
-docker-compose logs clickhouse
-
 # Логи в реальном времени
 docker-compose logs -f collector
 
@@ -427,29 +230,11 @@ docker-compose logs -f collector
 docker-compose logs --tail=100 collector
 ```
 
-## 🔒 Безопасность
-
-### Рекомендации
-
-1. **Используйте HTTPS** для внешних подключений
-2. **Ограничьте доступ** к портам 9104, 9095 (Prometheus, Alertmanager)
-3. **Регулярно обновляйте** Docker образы
-4. **Мониторьте ресурсы** системы
-
-### Брандмауэр
-
-```bash
-# Разрешить только необходимые порты
-ufw allow 8123  # ClickHouse (если нужен внешний доступ)
-ufw allow 9108  # Метрики коллектора
-```
-
 ## 📚 Дополнительные ресурсы
 
 - [OKX WebSocket API Documentation](https://www.okx.com/docs-v5/en/#websocket-api)
-- [ClickHouse Documentation](https://clickhouse.com/docs/)
+- [TimescaleDB Documentation](https://docs.timescale.com/)
 - [Prometheus Documentation](https://prometheus.io/docs/)
-- [Docker Compose Reference](https://docs.docker.com/compose/)
 
 ## 📄 Лицензия
 

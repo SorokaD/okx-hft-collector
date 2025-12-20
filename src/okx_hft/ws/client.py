@@ -14,6 +14,7 @@ from okx_hft.handlers.funding_rate import FundingRateHandler
 from okx_hft.handlers.mark_price import MarkPriceHandler
 from okx_hft.handlers.tickers import TickersHandler
 from okx_hft.handlers.open_interest import OpenInterestHandler
+from okx_hft.handlers.index_tickers import IndexTickersHandler
 
 log = get_logger(__name__)
 
@@ -46,12 +47,20 @@ class OKXWebSocketClient:
         self.mark_price_handler = MarkPriceHandler(self.storage)
         self.tickers_handler = TickersHandler(self.storage)
         self.open_interest_handler = OpenInterestHandler(self.storage)
+        self.index_tickers_handler = IndexTickersHandler(self.storage)
 
     def _sub_payload(self) -> Dict[str, Any]:
+        # Regular channels use INSTRUMENTS (e.g., BTC-USDT-SWAP)
         args = [
             {"channel": ch, "instId": inst}
             for ch in self.s.CHANNELS
             for inst in self.s.INSTRUMENTS
+        ]
+        # Index channels use INDEX_INSTRUMENTS (e.g., BTC-USDT)
+        args += [
+            {"channel": ch, "instId": inst}
+            for ch in self.s.INDEX_CHANNELS
+            for inst in self.s.INDEX_INSTRUMENTS
         ]
         return {"op": "subscribe", "args": args}
 
@@ -76,6 +85,7 @@ class OKXWebSocketClient:
             self.mark_price_handler.storage = self.storage
             self.tickers_handler.storage = self.storage
             self.open_interest_handler.storage = self.storage
+            self.index_tickers_handler.storage = self.storage
         except Exception as e:
             log.warning(
                 f"Failed to initialize PostgreSQL storage: {e}. "
@@ -164,6 +174,8 @@ class OKXWebSocketClient:
                 await self.tickers_handler.on_ticker(data)
             elif channel == "open-interest":
                 await self.open_interest_handler.on_open_interest(data)
+            elif channel == "index-tickers":
+                await self.index_tickers_handler.on_index_ticker(data)
             else:
                 log.warning(f"Unknown channel: {channel}")
 
@@ -189,6 +201,7 @@ class OKXWebSocketClient:
             ("mark_price", self.mark_price_handler),
             ("tickers", self.tickers_handler),
             ("open_interest", self.open_interest_handler),
+            ("index_tickers", self.index_tickers_handler),
         ]
         
         for name, handler in handlers:
