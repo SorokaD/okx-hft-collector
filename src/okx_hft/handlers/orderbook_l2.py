@@ -187,10 +187,10 @@ class OrderBookL2:
         max_levels: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
-        Convert current book state to normalized rows for ClickHouse.
+        Convert current book state to normalized rows for storage.
         Each row represents one level (bid or ask) of the snapshot.
         Returns list of dicts with: snapshot_id (UUID), instId, ts_event_ms, 
-        side (Enum8: 1=bid, 2=ask), price, size, level (UInt16)
+        side (1=bid, 2=ask), price, size, level
         """
         if not self._is_valid:
             return []
@@ -201,7 +201,7 @@ class OrderBookL2:
         # Add bid levels (top N, highest price first)
         for idx, (price_str, size_str) in enumerate(list(self.bids.items())[:limit]):
             try:
-                # Convert to float for ClickHouse Float64 compatibility
+                # Convert to float
                 price = float(price_str)
                 size = float(size_str)
                 rows.append({
@@ -223,7 +223,7 @@ class OrderBookL2:
         # Add ask levels (top N, lowest price first)
         for idx, (price_str, size_str) in enumerate(list(self.asks.items())[:limit]):
             try:
-                # Convert to float for ClickHouse Float64 compatibility
+                # Convert to float
                 price = float(price_str)
                 size = float(size_str)
                 rows.append({

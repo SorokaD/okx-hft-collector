@@ -66,7 +66,7 @@ class OrderBookHandler(IOrderBookHandler):
                 success = book.apply_snapshot(snapshot_data)
                 if success:
                     # Generate snapshot rows immediately after receiving OKX snapshot
-                    snapshot_id = str(uuid.uuid4())  # UUID for ClickHouse
+                    snapshot_id = str(uuid.uuid4())
                     ts_event_ms = int(snapshot_data.get("ts", ts_ingest_ms))
                     rows = book.to_snapshot_rows(
                         snapshot_id=snapshot_id,
@@ -209,7 +209,7 @@ class OrderBookHandler(IOrderBookHandler):
         if not book.is_valid():
             return
         
-        snapshot_id = str(uuid.uuid4())  # UUID for ClickHouse
+        snapshot_id = str(uuid.uuid4())
         ts_ingest_ms = time.time_ns() // 1_000_000
         ts_event_ms = book.last_ts_event_ms or ts_ingest_ms
         
@@ -300,7 +300,7 @@ class OrderBookHandler(IOrderBookHandler):
                         )
                         continue
                     
-                    snapshot_id = str(uuid.uuid4())  # UUID for ClickHouse
+                    snapshot_id = str(uuid.uuid4())
                     ts_event_ms = book.last_ts_event_ms or ts_ingest_ms
                     
                     rows = book.to_snapshot_rows(
