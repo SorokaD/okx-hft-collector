@@ -79,6 +79,13 @@ class ClickHouseStorage(IStorage):
              "ts_event_ms UInt64, ts_ingest_ms UInt64"
              ") ENGINE=MergeTree() "
              "ORDER BY (instId, ts_event_ms)"),
+            ("index_tickers",
+             f"CREATE TABLE IF NOT EXISTS {db}.index_tickers("
+             "instId String, idxPx Float64, open24h Float64, high24h Float64, "
+             "low24h Float64, sodUtc0 Float64, sodUtc8 Float64, "
+             "ts_event_ms UInt64, ts_ingest_ms UInt64"
+             ") ENGINE=MergeTree() "
+             "ORDER BY (instId, ts_event_ms)"),
         ]
         
         for table_name, create_sql in tables:
@@ -455,6 +462,46 @@ class ClickHouseStorage(IStorage):
         except Exception as e:
             print(f"ClickHouse insert error: {str(e)}")
             raise Exception(f"ClickHouse error writing open_interest: {str(e)}")
+
+    async def write_index_tickers(self, batch: Sequence[Dict[str, Any]]) -> None:
+        if not batch:
+            return
+        try:
+            print(f"Inserting {len(batch)} index ticker records to ClickHouse")
+
+            import aiohttp
+
+            values = []
+            for ticker in batch:
+                values.append(
+                    f"('{ticker['instId']}', {ticker['idxPx']}, {ticker['open24h']}, "
+                    f"{ticker['high24h']}, {ticker['low24h']}, {ticker['sodUtc0']}, "
+                    f"{ticker['sodUtc8']}, {ticker['ts_event_ms']}, {ticker['ts_ingest_ms']})"
+                )
+
+            query = f"INSERT INTO {self.db}.index_tickers VALUES {', '.join(values)}"
+
+            from urllib.parse import urlparse
+            parsed = urlparse(self.dsn)
+            host = parsed.hostname or "localhost"
+            port = parsed.port or 8123
+            
+            auth_url = f"http://{host}:{port}/"
+            user = self.user
+            password = self.password
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    auth_url, 
+                    data=query,
+                    auth=aiohttp.BasicAuth(user, password)
+                ) as response:
+                    result = await response.text()
+                    print(f"HTTP insert result: {result}, status: {response.status}")
+
+        except Exception as e:
+            print(f"ClickHouse insert error: {str(e)}")
+            raise Exception(f"ClickHouse error writing index_tickers: {str(e)}")
 
     async def write_orderbook_snapshots(self, batch: Sequence[Dict[str, Any]]) -> None:
         """

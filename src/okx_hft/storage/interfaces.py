@@ -14,6 +14,9 @@ class IStorage(Protocol):
     async def write_open_interest(
         self, batch: Sequence[Dict[str, Any]]
     ) -> None: ...
+    async def write_index_tickers(
+        self, batch: Sequence[Dict[str, Any]]
+    ) -> None: ...
     async def write_orderbook_snapshots(
         self, batch: Sequence[Dict[str, Any]]
     ) -> None: ...
