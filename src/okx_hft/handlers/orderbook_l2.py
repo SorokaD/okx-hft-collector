@@ -184,13 +184,14 @@ class OrderBookL2:
         self,
         snapshot_id: str,
         ts_event_ms: int,
+        ts_ingest_ms: int,
         max_levels: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Convert current book state to normalized rows for storage.
         Each row represents one level (bid or ask) of the snapshot.
         Returns list of dicts with: snapshot_id (UUID), instId, ts_event_ms, 
-        side (1=bid, 2=ask), price, size, level
+        ts_ingest_ms, side (1=bid, 2=ask), price, size, level
         """
         if not self._is_valid:
             return []
@@ -208,10 +209,11 @@ class OrderBookL2:
                     "snapshot_id": snapshot_id,
                     "instId": self.inst_id,
                     "ts_event_ms": ts_event_ms,
-                    "side": 1,  # Enum8: 'bid' = 1
+                    "ts_ingest_ms": ts_ingest_ms,
+                    "side": 1,  # 'bid' = 1
                     "price": price,
                     "size": size,
-                    "level": idx + 1,  # UInt16: level number starting from 1
+                    "level": idx + 1,
                 })
             except (ValueError, TypeError) as e:
                 log.warning(
@@ -230,10 +232,11 @@ class OrderBookL2:
                     "snapshot_id": snapshot_id,
                     "instId": self.inst_id,
                     "ts_event_ms": ts_event_ms,
-                    "side": 2,  # Enum8: 'ask' = 2
+                    "ts_ingest_ms": ts_ingest_ms,
+                    "side": 2,  # 'ask' = 2
                     "price": price,
                     "size": size,
-                    "level": idx + 1,  # UInt16: level number starting from 1
+                    "level": idx + 1,
                 })
             except (ValueError, TypeError) as e:
                 log.warning(

@@ -71,6 +71,7 @@ class OrderBookHandler(IOrderBookHandler):
                     rows = book.to_snapshot_rows(
                         snapshot_id=snapshot_id,
                         ts_event_ms=ts_event_ms,
+                        ts_ingest_ms=ts_ingest_ms,
                         max_levels=self.max_depth
                     )
                     if rows:
@@ -216,6 +217,7 @@ class OrderBookHandler(IOrderBookHandler):
         rows = book.to_snapshot_rows(
             snapshot_id=snapshot_id,
             ts_event_ms=ts_event_ms,
+            ts_ingest_ms=ts_ingest_ms,
             max_levels=self.max_depth
         )
         
@@ -306,6 +308,7 @@ class OrderBookHandler(IOrderBookHandler):
                     rows = book.to_snapshot_rows(
                         snapshot_id=snapshot_id,
                         ts_event_ms=ts_event_ms,
+                        ts_ingest_ms=ts_ingest_ms,
                         max_levels=self.max_depth
                     )
                     

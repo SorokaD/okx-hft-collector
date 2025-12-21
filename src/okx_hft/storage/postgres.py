@@ -201,6 +201,7 @@ class PostgreSQLStorage(IStorage):
                     snapshot_id UUID NOT NULL,
                     instid VARCHAR(50) NOT NULL,
                     ts_event_ms BIGINT NOT NULL,
+                    ts_ingest_ms BIGINT NOT NULL,
                     side SMALLINT NOT NULL,
                     price DOUBLE PRECISION NOT NULL,
                     size DOUBLE PRECISION NOT NULL,
@@ -211,6 +212,11 @@ class PostgreSQLStorage(IStorage):
             await conn.execute(f"""
                 CREATE INDEX IF NOT EXISTS idx_orderbook_snapshots_instid_ts 
                 ON "{self.schema}".orderbook_snapshots(instid, ts_event_ms)
+            """)
+            # Index for incremental sync watermark
+            await conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_orderbook_snapshots_ts_ingest_ms 
+                ON "{self.schema}".orderbook_snapshots(ts_ingest_ms)
             """)
             log.info(f"Created/verified table {self.schema}.orderbook_snapshots")
             
@@ -415,7 +421,7 @@ class PostgreSQLStorage(IStorage):
     async def write_orderbook_snapshots(self, batch: Sequence[Dict[str, Any]]) -> None:
         """
         Write orderbook snapshots to PostgreSQL.
-        Format: {snapshot_id (UUID), instId, ts_event_ms, side (1=bid, 2=ask), 
+        Format: {snapshot_id (UUID), instId, ts_event_ms, ts_ingest_ms, side (1=bid, 2=ask), 
         price (Float64), size (Float64), level (UInt16)}
         """
         from okx_hft.utils.logging import get_logger
@@ -430,8 +436,8 @@ class PostgreSQLStorage(IStorage):
                 await conn.executemany(
                     f"""
                     INSERT INTO "{self.schema}".orderbook_snapshots 
-                    (snapshot_id, instid, ts_event_ms, side, price, size, level)
-                    VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+                    (snapshot_id, instid, ts_event_ms, ts_ingest_ms, side, price, size, level)
+                    VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT (instid, ts_event_ms, snapshot_id, side, price) DO NOTHING
                     """,
                     [
@@ -439,6 +445,7 @@ class PostgreSQLStorage(IStorage):
                             row["snapshot_id"],
                             row["instId"],
                             row["ts_event_ms"],
+                            row["ts_ingest_ms"],
                             row["side"],
                             row["price"],
                             row["size"],
