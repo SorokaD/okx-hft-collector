@@ -219,6 +219,7 @@ class PostgreSQLStorage(IStorage):
                 CREATE TABLE IF NOT EXISTS "{self.schema}".orderbook_updates (
                     instid VARCHAR(50) NOT NULL,
                     ts_event_ms BIGINT NOT NULL,
+                    ts_ingest_ms BIGINT NOT NULL,
                     bids_delta JSONB,
                     asks_delta JSONB,
                     checksum BIGINT,
@@ -228,6 +229,11 @@ class PostgreSQLStorage(IStorage):
             await conn.execute(f"""
                 CREATE INDEX IF NOT EXISTS idx_orderbook_updates_instid_ts 
                 ON "{self.schema}".orderbook_updates(instid, ts_event_ms)
+            """)
+            # Index for incremental sync watermark
+            await conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_orderbook_updates_ts_ingest_ms 
+                ON "{self.schema}".orderbook_updates(ts_ingest_ms)
             """)
             log.info(f"Created/verified table {self.schema}.orderbook_updates")
             
@@ -493,14 +499,15 @@ class PostgreSQLStorage(IStorage):
                 await conn.executemany(
                     f"""
                     INSERT INTO "{self.schema}".orderbook_updates 
-                    (instid, ts_event_ms, bids_delta, asks_delta, checksum)
-                    VALUES ($1, $2, $3::jsonb, $4::jsonb, $5)
+                    (instid, ts_event_ms, ts_ingest_ms, bids_delta, asks_delta, checksum)
+                    VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
                     ON CONFLICT (instid, ts_event_ms) DO NOTHING
                     """,
                     [
                         (
                             update["instId"],
                             update["ts_event_ms"],
+                            update["ts_ingest_ms"],
                             orjson.dumps(update.get("bids_delta", [])).decode('utf-8'),
                             orjson.dumps(update.get("asks_delta", [])).decode('utf-8'),
                             update.get("checksum", 0),
