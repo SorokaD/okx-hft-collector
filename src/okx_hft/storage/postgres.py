@@ -201,6 +201,7 @@ class PostgreSQLStorage(IStorage):
                     snapshot_id UUID NOT NULL,
                     instid VARCHAR(50) NOT NULL,
                     ts_event_ms BIGINT NOT NULL,
+                    ts_ingest_ms BIGINT NOT NULL,
                     side SMALLINT NOT NULL,
                     price DOUBLE PRECISION NOT NULL,
                     size DOUBLE PRECISION NOT NULL,
@@ -212,6 +213,11 @@ class PostgreSQLStorage(IStorage):
                 CREATE INDEX IF NOT EXISTS idx_orderbook_snapshots_instid_ts 
                 ON "{self.schema}".orderbook_snapshots(instid, ts_event_ms)
             """)
+            # Index for incremental sync watermark
+            await conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_orderbook_snapshots_ts_ingest_ms 
+                ON "{self.schema}".orderbook_snapshots(ts_ingest_ms)
+            """)
             log.info(f"Created/verified table {self.schema}.orderbook_snapshots")
             
             # Create orderbook_updates table (using JSONB for nested data)
@@ -219,6 +225,7 @@ class PostgreSQLStorage(IStorage):
                 CREATE TABLE IF NOT EXISTS "{self.schema}".orderbook_updates (
                     instid VARCHAR(50) NOT NULL,
                     ts_event_ms BIGINT NOT NULL,
+                    ts_ingest_ms BIGINT NOT NULL,
                     bids_delta JSONB,
                     asks_delta JSONB,
                     checksum BIGINT,
@@ -228,6 +235,11 @@ class PostgreSQLStorage(IStorage):
             await conn.execute(f"""
                 CREATE INDEX IF NOT EXISTS idx_orderbook_updates_instid_ts 
                 ON "{self.schema}".orderbook_updates(instid, ts_event_ms)
+            """)
+            # Index for incremental sync watermark
+            await conn.execute(f"""
+                CREATE INDEX IF NOT EXISTS idx_orderbook_updates_ts_ingest_ms 
+                ON "{self.schema}".orderbook_updates(ts_ingest_ms)
             """)
             log.info(f"Created/verified table {self.schema}.orderbook_updates")
             
@@ -409,7 +421,7 @@ class PostgreSQLStorage(IStorage):
     async def write_orderbook_snapshots(self, batch: Sequence[Dict[str, Any]]) -> None:
         """
         Write orderbook snapshots to PostgreSQL.
-        Format: {snapshot_id (UUID), instId, ts_event_ms, side (1=bid, 2=ask), 
+        Format: {snapshot_id (UUID), instId, ts_event_ms, ts_ingest_ms, side (1=bid, 2=ask), 
         price (Float64), size (Float64), level (UInt16)}
         """
         from okx_hft.utils.logging import get_logger
@@ -424,8 +436,8 @@ class PostgreSQLStorage(IStorage):
                 await conn.executemany(
                     f"""
                     INSERT INTO "{self.schema}".orderbook_snapshots 
-                    (snapshot_id, instid, ts_event_ms, side, price, size, level)
-                    VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+                    (snapshot_id, instid, ts_event_ms, ts_ingest_ms, side, price, size, level)
+                    VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
                     ON CONFLICT (instid, ts_event_ms, snapshot_id, side, price) DO NOTHING
                     """,
                     [
@@ -433,6 +445,7 @@ class PostgreSQLStorage(IStorage):
                             row["snapshot_id"],
                             row["instId"],
                             row["ts_event_ms"],
+                            row["ts_ingest_ms"],
                             row["side"],
                             row["price"],
                             row["size"],
@@ -493,14 +506,15 @@ class PostgreSQLStorage(IStorage):
                 await conn.executemany(
                     f"""
                     INSERT INTO "{self.schema}".orderbook_updates 
-                    (instid, ts_event_ms, bids_delta, asks_delta, checksum)
-                    VALUES ($1, $2, $3::jsonb, $4::jsonb, $5)
+                    (instid, ts_event_ms, ts_ingest_ms, bids_delta, asks_delta, checksum)
+                    VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
                     ON CONFLICT (instid, ts_event_ms) DO NOTHING
                     """,
                     [
                         (
                             update["instId"],
                             update["ts_event_ms"],
+                            update["ts_ingest_ms"],
                             orjson.dumps(update.get("bids_delta", [])).decode('utf-8'),
                             orjson.dumps(update.get("asks_delta", [])).decode('utf-8'),
                             update.get("checksum", 0),
