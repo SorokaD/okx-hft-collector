@@ -32,26 +32,32 @@ class PostgreSQLStorage(IStorage):
     async def connect(self) -> None:
         """Create connection pool and ensure schema exists"""
         try:
-            # First connect to postgres database to create our database if needed
-            admin_conn = await asyncpg.connect(
-                host=self.host,
-                port=self.port,
-                user=self.user,
-                password=self.password,
-                database="postgres"
-            )
-            
-            # Create database if not exists
-            db_exists = await admin_conn.fetchval(
-                "SELECT 1 FROM pg_database WHERE datname = $1",
-                self.database
-            )
-            if not db_exists:
-                await admin_conn.execute(
-                    f'CREATE DATABASE "{self.database}"'
+            # Optional admin connection to create database if needed.
+            # This can fail when connecting through PgBouncer configured for a single DB.
+            try:
+                admin_conn = await asyncpg.connect(
+                    host=self.host,
+                    port=self.port,
+                    user=self.user,
+                    password=self.password,
+                    database="postgres"
                 )
-                log.info(f"Created database {self.database}")
-            await admin_conn.close()
+                
+                db_exists = await admin_conn.fetchval(
+                    "SELECT 1 FROM pg_database WHERE datname = $1",
+                    self.database
+                )
+                if not db_exists:
+                    await admin_conn.execute(
+                        f'CREATE DATABASE "{self.database}"'
+                    )
+                    log.info(f"Created database {self.database}")
+                await admin_conn.close()
+            except Exception as e:
+                log.warning(
+                    "Admin connection skipped (cannot access postgres DB). "
+                    f"Continuing with database={self.database}. Error: {e}"
+                )
             
             # Create connection pool to our database
             self.pool = await asyncpg.create_pool(
