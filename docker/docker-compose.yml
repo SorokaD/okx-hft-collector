@@ -15,7 +15,7 @@ services:
       CHANNELS: '["trades","funding-rate","mark-price","tickers","open-interest","books"]'
       OKX_WS_URL: "wss://ws.okx.com:8443/ws/v5/public"
       POSTGRES_HOST: "${POSTGRES_LINK}"
-      POSTGRES_PORT: "5432"
+      POSTGRES_PORT: "6432"
       POSTGRES_USER: "${POSTGRES_USER}"
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
       POSTGRES_DB: "${POSTGRES_DB}"

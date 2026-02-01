@@ -170,7 +170,7 @@ SELECT 'index_tickers', COUNT(*) FROM okx_raw.index_tickers;
 | `INDEX_CHANNELS` | `["index-tickers"]` | Каналы для индексных цен |
 | `OKX_WS_URL` | `wss://ws.okx.com:8443/ws/v5/public` | URL WebSocket OKX |
 | `POSTGRES_HOST` | `localhost` | Хост PostgreSQL |
-| `POSTGRES_PORT` | `5432` | Порт PostgreSQL |
+| `POSTGRES_PORT` | `6432` | Порт PostgreSQL (PgBouncer) |
 | `POSTGRES_USER` | - | Пользователь PostgreSQL |
 | `POSTGRES_PASSWORD` | - | Пароль PostgreSQL |
 | `POSTGRES_DB` | `okx_hft` | База данных |

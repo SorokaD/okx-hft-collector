@@ -10,7 +10,7 @@ class PostgreSQLStorage(IStorage):
     def __init__(
         self, 
         host: str = "localhost",
-        port: int = 5432,
+        port: int = 6432,
         user: str = "",
         password: str = "",
         database: str = "okx_hft",

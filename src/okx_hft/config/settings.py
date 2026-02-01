@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     OKX_WS_URL: str = "wss://ws.okx.com:8443/ws/v5/public"
 
     POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
+    POSTGRES_PORT: int = 6432
     POSTGRES_USER: str = ""
     POSTGRES_PASSWORD: str = ""
     POSTGRES_DB: str = "okx_hft"
