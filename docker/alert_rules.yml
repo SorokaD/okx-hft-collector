@@ -3,48 +3,48 @@ groups:
     rules:
       # Алерт на разрыв WebSocket соединения
       - alert: WebSocketConnectionDown
-        expr: increase(reconnects_total[1m]) > 0
-        for: 1m      # Увеличил до 1 минуты, чтобы не спамить при кратковременных переподключениях
+        expr: increase(reconnects_total[10m]) > 3
+        for: 5m      # OKX WS может переподключаться кратковременно
         labels:
-          severity: critical
+          severity: warning
         annotations:
-          summary: "OKX WebSocket reconnected"
-          description: "WebSocket connection to OKX was reestablished. Reconnects in last 1 minute: {{ $value }}"
+          summary: "Frequent OKX WebSocket reconnects"
+          description: "More than 3 reconnects in last 10 minutes (value={{ $value }})"
 
       # Алерт на отсутствие данных
       - alert: NoDataReceived
-        expr: rate(events_total[1m]) == 0
-        for: 2m      # Увеличил до 2 минут, чтобы не паниковать при кратковременных паузах
+        expr: rate(events_total[5m]) == 0
+        for: 5m      # OKX может иметь паузы/тишину в потоке
         labels:
           severity: critical
         annotations:
           summary: "No data received from OKX"
-          description: "No events received from OKX WebSocket in the last 1 minute"
+          description: "No events received from OKX WebSocket in the last 5 minutes"
 
       # Алерт на высокую задержку event loop
       - alert: HighEventLoopLag
-        expr: event_loop_lag_ms > 50
-        for: 1m      # Увеличил до 1 минуты, чтобы игнорировать кратковременные скачки
+        expr: event_loop_lag_ms > 100
+        for: 5m      # Игнорируем короткие пики
         labels:
           severity: warning
         annotations:
           summary: "High event loop lag"
-          description: "Event loop lag is {{ $value }}ms, which is above 50ms threshold"
+          description: "Event loop lag is {{ $value }}ms, which is above 100ms threshold"
 
       # Алерт на ошибки вставки данных
       - alert: DataInsertionErrors
-        expr: increase(events_total{channel="unknown"}[1m]) > 5
-        for: 1m      # Увеличил до 1 минуты
+        expr: increase(events_total{channel="unknown"}[10m]) > 20
+        for: 5m      # Смотрим тренд, а не мгновенный всплеск
         labels:
           severity: warning
         annotations:
           summary: "High number of unknown events"
-          description: "{{ $value }} unknown events received in the last 1 minute"
+          description: "{{ $value }} unknown events received in the last 10 minutes"
 
       # Алерт на недоступность коллектора
       - alert: CollectorDown
         expr: up{job="okx-collector"} == 0
-        for: 30s     # Увеличил до 30 секунд, чтобы не паниковать при временных проблемах с метриками
+        for: 2m      # Дадим время на перезапуск/грейс
         labels:
           severity: critical
         annotations:
@@ -54,7 +54,7 @@ groups:
       # Алерт на недоступность PostgreSQL/TimescaleDB
       - alert: PostgreSQLDown
         expr: pg_up == 0
-        for: 30s
+        for: 2m
         labels:
           severity: critical
         annotations:
@@ -63,20 +63,20 @@ groups:
 
       # Алерт на низкую частоту событий
       - alert: LowEventRate
-        expr: rate(events_total[1m]) < 0.1
-        for: 2m      # Увеличил до 2 минут
+        expr: rate(events_total[5m]) < 0.05
+        for: 10m     # Стабильно низкий поток
         labels:
           severity: warning
         annotations:
           summary: "Low event rate from OKX"
-          description: "Event rate is {{ $value }} events/sec, which is below normal threshold"
+          description: "Event rate is {{ $value }} events/sec over 5m, below threshold"
 
       # Алерт на высокое потребление памяти
       - alert: HighMemoryUsage
-        expr: process_resident_memory_bytes / 1024 / 1024 > 500
-        for: 2m      # Увеличил до 2 минут
+        expr: process_resident_memory_bytes / 1024 / 1024 > 800
+        for: 10m     # Стабильное потребление
         labels:
           severity: warning
         annotations:
           summary: "High memory usage"
-          description: "Memory usage is {{ $value }}MB, which is above 500MB threshold"
+          description: "Memory usage is {{ $value }}MB, which is above 800MB threshold"
