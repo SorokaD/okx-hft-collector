@@ -97,3 +97,6 @@ models/*
 
 # My ignore 
 postgreSQL/*
+
+.cursorignore
+.gitignore
